@@ -1,0 +1,17 @@
+{
+  "name": "@ship-council/orchestration",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@ship-council/agents": "0.1.0",
+    "@ship-council/providers": "0.1.0",
+    "@ship-council/shared": "0.1.0"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

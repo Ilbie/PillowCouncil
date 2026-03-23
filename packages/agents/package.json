@@ -1,0 +1,17 @@
+{
+  "name": "@ship-council/agents",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./constants": "./src/constants.ts",
+    "./generation": "./src/generation.ts"
+  },
+  "dependencies": {
+    "@ship-council/shared": "0.1.0"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json"
+  }
+}

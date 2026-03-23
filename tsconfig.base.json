@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "baseUrl": ".",
+    "paths": {
+      "@ship-council/shared": ["packages/shared/src/index.ts"],
+      "@ship-council/shared/*": ["packages/shared/src/*"],
+      "@ship-council/agents": ["packages/agents/src/index.ts"],
+      "@ship-council/agents/*": ["packages/agents/src/*"],
+      "@ship-council/orchestration": ["packages/orchestration/src/index.ts"],
+      "@ship-council/orchestration/*": ["packages/orchestration/src/*"],
+      "@ship-council/providers": ["packages/providers/src/index.ts"],
+      "@ship-council/providers/*": ["packages/providers/src/*"],
+      "@ship-council/exports": ["packages/exports/src/index.ts"],
+      "@ship-council/exports/*": ["packages/exports/src/*"]
+    }
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "name": "ship-council",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @ship-council/web",
+    "dev:e2e": "tsx scripts/reset-db.ts && npm run dev:e2e --workspace @ship-council/web",
+    "dev:web": "npm run dev --workspace @ship-council/web",
+    "build": "npm run build --workspace @ship-council/web && npm run typecheck",
+    "typecheck": "npm run typecheck --workspace @ship-council/shared && npm run typecheck --workspace @ship-council/agents && npm run typecheck --workspace @ship-council/providers && npm run typecheck --workspace @ship-council/orchestration && npm run typecheck --workspace @ship-council/exports && npm run typecheck --workspace @ship-council/web",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "db:inspect": "tsx scripts/inspect-db.ts"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.54.0",
+    "@rollup/rollup-linux-x64-gnu": "^4.60.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.13.10",
+    "@types/react": "^19.0.12",
+    "@types/react-dom": "^19.0.5",
+    "cross-env": "^7.0.3",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.8"
+  },
+  "dependencies": {
+    "@opencode-ai/sdk": "^1.2.27",
+    "opencode-ai": "^1.2.27",
+    "zod-to-json-schema": "^3.25.1"
+  }
+}
