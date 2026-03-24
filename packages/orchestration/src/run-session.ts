@@ -2,167 +2,51 @@ import { getPresetDefinition } from "@ship-council/agents";
 import type { CouncilProvider, ProviderUsage } from "@ship-council/providers";
 import { z } from "zod";
 import {
+  createEmptyDebateState,
   createId,
+  debateStateSchema,
   moderatorSummarySchema,
   nowIso,
+  prependRebuttalTargetHeader,
+  type DebateState,
   type LiveMessageRecord,
-  type RunStreamEvent,
-  type AgentDefinition,
-  type DecisionSummary,
-  type MessageRecord,
-  type ModeratorSummary,
-  type RoundRecord,
-  type SessionLanguage,
-  type SessionRecord,
-  type UsageSummary
+  type MemorySearchResult,
+  type RebuttalTargetMetadata,
+   type AgentDefinition,
+    type DecisionSummary,
+    type MessageRecord,
+    type SessionRecord,
+    type UsageSummary
 } from "@ship-council/shared";
 
-type OrchestratedRound = RoundRecord & {
-  messages: MessageRecord[];
-};
+import {
+  formatAgentSystem,
+  formatFinalPrompt,
+  formatModeratorPrompt,
+  formatOpinionPrompt,
+  formatRebuttalPrompt,
+  getLanguageInstruction,
+  getThinkingIntensityInstruction,
+  renderMessages,
+} from "./prompts";
+import { createMessage, createRound } from "./engine/factories";
+import { loadRetrievedMemories } from "./engine/memory-loader";
+import { persistMessage } from "./engine/message-persistence";
+import type { ContextState, OrchestratedRound, RunActivityGuard, RunSessionCallbacks, RunSessionResult } from "./engine/types";
 
-type RunSessionResult = {
-  rounds: OrchestratedRound[];
-  decision: DecisionSummary;
-  usage: UsageSummary;
-};
-
-type RunSessionCallbacks = {
-  onRoundCreated?: (round: RoundRecord) => Promise<void> | void;
-  onRoundSummary?: (roundId: string, summary: string | null) => Promise<void> | void;
-  onMessageCreated?: (message: MessageRecord, usage: ProviderUsage) => Promise<void> | void;
-  onUsage?: (usage: ProviderUsage) => Promise<void> | void;
-  onStreamEvent?: (event: RunStreamEvent) => Promise<void> | void;
-};
-
-type RunActivityGuard = () => Promise<void> | void;
-
-type ContextState = {
-  compressedSummary: string | null;
-  recentMessages: MessageRecord[];
-};
-
-const CONTEXT_CHAR_LIMIT = 12_000;
-const CONTEXT_RECENT_MESSAGE_COUNT = 8;
 const finalDecisionSchema = z.object({
   topRecommendation: z.string().min(1).max(1000),
   risks: z.array(z.string().min(1)).min(1).max(6),
   finalSummary: z.string().min(1).max(1600)
 });
+const rebuttalTargetSchema = z.object({
+  targetAgentKey: z.string().min(1).max(80),
+  weakestClaim: z.string().min(1).max(400),
+  attackPoint: z.string().min(1).max(400)
+});
+type RebuttalTargetPlan = z.output<typeof rebuttalTargetSchema>;
 
-function createRound(
-  sessionId: string,
-  runId: string,
-  roundNumber: number,
-  stage: RoundRecord["stage"],
-  title: string,
-  summary: string | null = null
-): RoundRecord {
-  return {
-    id: createId("round"),
-    sessionId,
-    runId,
-    roundNumber,
-    stage,
-    title,
-    summary,
-    createdAt: nowIso()
-  };
-}
-
-function createMessage(input: Omit<MessageRecord, "id" | "createdAt">): MessageRecord {
-  return {
-    ...input,
-    id: createId("message"),
-    createdAt: nowIso()
-  };
-}
-
-function getLanguageInstruction(session: SessionRecord): string {
-  const labels: Record<SessionLanguage, string> = {
-    ko: "Korean",
-    en: "English",
-    ja: "Japanese"
-  };
-
-  return `Respond in ${labels[session.language] ?? "English"}.`;
-}
-
-function getThinkingIntensityLabel(session: SessionRecord): string {
-  const normalized = session.thinkingIntensity.trim().toLowerCase();
-
-  if (["low", "minimal", "fast", "light"].includes(normalized)) {
-    return "low";
-  }
-
-  if (["deep", "high", "max", "hard"].includes(normalized)) {
-    return "deep";
-  }
-
-  if (["medium", "balanced", "default", "normal"].includes(normalized)) {
-    return "balanced";
-  }
-
-  switch (normalized) {
-    case "low":
-      return "low";
-    case "deep":
-      return "deep";
-    default:
-      return "balanced";
-  }
-}
-
-function getThinkingIntensityInstruction(session: SessionRecord): string {
-  switch (session.thinkingIntensity) {
-    case "low":
-      return "Prefer concise reasoning, fewer branches, and fast convergence.";
-    case "deep":
-      return "Reason carefully, pressure-test assumptions, and explore tradeoffs before concluding.";
-    default:
-      return "Balance speed with depth and test the most important tradeoffs.";
-  }
-}
-
-function formatAgentSystem(agent: AgentDefinition, session: SessionRecord): string {
-  return [
-    agent.systemPrompt,
-    `Role: ${agent.role}`,
-    `Goal: ${agent.goal}`,
-    `Bias: ${agent.bias}`,
-    `Style: ${agent.style}`,
-    `Planned debate cycles: ${session.debateIntensity}`,
-    `Thinking intensity: ${getThinkingIntensityLabel(session)}`,
-    "This discussion is iterative. Update your position after reading earlier rounds instead of repeating yourself.",
-    getThinkingIntensityInstruction(session),
-    "Be direct, concrete, and critical where needed."
-  ].join("\n");
-}
-
-function renderMessages(messages: MessageRecord[]): string {
-  if (messages.length === 0) {
-    return "No prior discussion yet.";
-  }
-
-  return messages
-    .map(
-      (message) =>
-        `- [${message.kind.toUpperCase()}] ${message.agentName}: ${message.content}`
-    )
-    .join("\n\n");
-}
-
-function renderContext(state: ContextState): string {
-  return [
-    state.compressedSummary ? `Compressed prior context:\n${state.compressedSummary}` : null,
-    state.recentMessages.length > 0 ? `Recent discussion:\n${renderMessages(state.recentMessages)}` : null
-  ]
-    .filter((value): value is string => Boolean(value))
-    .join("\n\n")
-    .trim();
-}
-
-async function maybeCompressContext(input: {
+async function refreshDebateState(input: {
   session: SessionRecord;
   provider: CouncilProvider;
   state: ContextState;
@@ -172,37 +56,39 @@ async function maybeCompressContext(input: {
 }): Promise<void> {
   await input.assertActive?.();
 
-  const context = renderContext(input.state);
-  if (context.length <= CONTEXT_CHAR_LIMIT || input.state.recentMessages.length <= CONTEXT_RECENT_MESSAGE_COUNT) {
+  if (input.state.recentMessages.length === 0) {
     return;
   }
 
-  const messagesToCompress = input.state.recentMessages.slice(0, -CONTEXT_RECENT_MESSAGE_COUNT);
-  if (messagesToCompress.length === 0) {
-    return;
-  }
-
-    const response = await input.provider.generateText({
+  const response = await input.provider.generateJson({
       provider: input.session.provider,
       model: input.session.model,
       variant: input.session.thinkingIntensity,
       system: [
-      "You compress earlier debate history for later rounds.",
-      "Keep the strongest claims, rebuttals, changes in position, unresolved conflicts, and operational risks.",
-      "Return a short bullet summary only.",
-      getThinkingIntensityInstruction(input.session),
-      getLanguageInstruction(input.session)
-    ].join("\n"),
+        "You maintain a compact JSON whiteboard for a long-running debate.",
+        "Overwrite the state using only concrete agreements, active conflicts, and unanswered questions.",
+        "Avoid duplicates and keep each item short.",
+        "Return JSON that matches the schema exactly.",
+        getThinkingIntensityInstruction(input.session),
+        getLanguageInstruction(input.session)
+      ].join("\n"),
     prompt: [
       `Topic: ${input.session.prompt}`,
       `Completed debate cycles so far: ${input.session.debateIntensity}`,
       "",
-      input.state.compressedSummary ? `Existing compressed summary:\n${input.state.compressedSummary}` : null,
-      "Messages to compress:",
-      renderMessages(messagesToCompress)
+      "Existing debate whiteboard:",
+      JSON.stringify(input.state.debateState, null, 2),
+      "",
+      "Recent discussion:",
+      renderMessages(input.state.recentMessages),
+      "",
+      'Return JSON matching this shape exactly:',
+      '{"agreedPoints":[],"activeConflicts":[],"pendingQuestions":[]}'
     ]
       .filter((value): value is string => Boolean(value))
-      .join("\n\n")
+      .join("\n\n"),
+    schema: debateStateSchema,
+    retries: 1
   });
 
   await input.assertActive?.();
@@ -211,123 +97,84 @@ async function maybeCompressContext(input: {
   input.usage.totalCompletionTokens += response.usage.completionTokens;
   await input.callbacks?.onUsage?.(response.usage);
 
-  input.state.compressedSummary = [
-    input.state.compressedSummary,
-    response.text.trim()
-  ]
-    .filter(Boolean)
-    .join("\n\n");
-  input.state.recentMessages = input.state.recentMessages.slice(-CONTEXT_RECENT_MESSAGE_COUNT);
+  input.state.debateState = response.data;
+  await input.callbacks?.onDebateStateUpdated?.(response.data);
 }
 
-function formatOpinionPrompt(input: {
-  session: SessionRecord;
-  agentName: string;
-  cycleNumber: number;
-  context: string;
-}): string {
-  return [
-    `Topic: ${input.session.prompt}`,
-    `Current debate cycle: ${input.cycleNumber} of ${input.session.debateIntensity}`,
-    `Thinking intensity: ${getThinkingIntensityLabel(input.session)}`,
-    "",
-    input.context ? `Prior debate context:\n${input.context}` : "No prior debate context yet.",
-    "",
-    `${input.agentName}, write your current position for this cycle.`,
-    "You must refine your argument using the earlier discussion. Do not repeat yourself verbatim.",
-    getThinkingIntensityInstruction(input.session),
-    "Format:",
-    "1. Current position in one sentence",
-    "2. What changed since the prior discussion",
-    "3. The strongest supporting reasons right now",
-    "4. The biggest remaining risk",
-    getLanguageInstruction(input.session)
-  ].join("\n");
+function buildFallbackRebuttalTarget(agentKey: string, opinionMessages: MessageRecord[]): RebuttalTargetPlan {
+  const fallbackMessage = opinionMessages.find((message) => message.agentKey !== agentKey) ?? opinionMessages[0];
+
+  return {
+    targetAgentKey: fallbackMessage?.agentKey ?? agentKey,
+    weakestClaim: fallbackMessage?.content.split("\n")[0]?.trim() || "The current claim needs stronger evidence.",
+    attackPoint: "Attack the weakest assumption, missing evidence, or execution risk in that claim."
+  };
 }
 
-function formatRebuttalPrompt(input: {
+async function selectRebuttalTarget(input: {
   session: SessionRecord;
-  agentName: string;
+  provider: CouncilProvider;
+  agent: AgentDefinition;
   cycleNumber: number;
-  context: string;
   opinionMessages: MessageRecord[];
-}): string {
-  return [
-    `Topic: ${input.session.prompt}`,
-    `Current debate cycle: ${input.cycleNumber} of ${input.session.debateIntensity}`,
-    `Thinking intensity: ${getThinkingIntensityLabel(input.session)}`,
-    "",
-    input.context ? `Prior debate context:\n${input.context}` : "No prior debate context yet.",
-    "",
-    "Current opinion round:",
-    renderMessages(input.opinionMessages),
-    "",
-    `${input.agentName}, rebut the current positions.`,
-    "Attack contradictions, weak assumptions, missing evidence, and execution risk.",
-    getThinkingIntensityInstruction(input.session),
-    "Format:",
-    "1. The weakest claim you see",
-    "2. Your rebuttal",
-    "3. The most important unresolved conflict",
-    "4. What should change before the next cycle",
-    getLanguageInstruction(input.session)
-  ].join("\n");
-}
-
-function formatModeratorPrompt(input: {
-  session: SessionRecord;
-  context: string;
-}): string {
-  return [
-    `Topic: ${input.session.prompt}`,
-    `Completed debate cycles: ${input.session.debateIntensity}`,
-    `Thinking intensity: ${getThinkingIntensityLabel(input.session)}`,
-    "",
-    input.context ? `Compressed debate history:\n${input.context}` : "No debate history available.",
-    "",
-    "Return JSON matching this schema exactly:",
-    '{"keyPoints":[],"agreements":[],"disagreements":[],"risks":[],"summary":""}',
-    getLanguageInstruction(input.session)
-  ].join("\n");
-}
-
-function formatFinalPrompt(input: {
-  session: SessionRecord;
-  context: string;
-  moderatorSummary: ModeratorSummary;
-}): string {
-  return [
-    `Topic: ${input.session.prompt}`,
-    `Preset: ${input.session.customPreset?.name ?? input.session.presetId}`,
-    `Language: ${input.session.language}`,
-    `Completed debate cycles: ${input.session.debateIntensity}`,
-    `Thinking intensity: ${getThinkingIntensityLabel(input.session)}`,
-    "",
-    input.context ? `Debate context:\n${input.context}` : "No debate context available.",
-    "",
-    "# Moderator summary",
-    JSON.stringify(input.moderatorSummary, null, 2),
-    "",
-    "Return exactly one JSON object matching this shape:",
-    '{"topRecommendation":"","risks":[],"finalSummary":""}',
-    getThinkingIntensityInstruction(input.session),
-    getLanguageInstruction(input.session)
-  ].join("\n");
-}
-
-async function persistMessage(input: {
-  round: OrchestratedRound;
-  state: ContextState;
   usage: UsageSummary;
   callbacks?: RunSessionCallbacks;
-  message: MessageRecord;
-  usageDelta: ProviderUsage;
-}): Promise<void> {
-  input.round.messages.push(input.message);
-  input.state.recentMessages.push(input.message);
-  input.usage.totalPromptTokens += input.usageDelta.promptTokens;
-  input.usage.totalCompletionTokens += input.usageDelta.completionTokens;
-  await input.callbacks?.onMessageCreated?.(input.message, input.usageDelta);
+  assertActive?: RunActivityGuard;
+}): Promise<RebuttalTargetPlan & { targetAgentName: string }> {
+  const fallback = buildFallbackRebuttalTarget(input.agent.key, input.opinionMessages);
+  const targetCandidates = input.opinionMessages.filter((message) => message.agentKey !== input.agent.key);
+
+  if (targetCandidates.length === 0) {
+    return {
+      ...fallback,
+      targetAgentName: input.agent.name
+    };
+  }
+
+  const response = await input.provider.generateJson({
+    provider: input.session.provider,
+    model: input.session.model,
+    variant: input.session.thinkingIntensity,
+    system: [
+      "You route one rebuttal turn for the Ship Council debate.",
+      "Choose exactly one target agent whose current opinion is most worth attacking.",
+      "Return only JSON that matches the schema.",
+      getThinkingIntensityInstruction(input.session),
+      getLanguageInstruction(input.session)
+    ].join("\n"),
+    prompt: [
+      "Select exactly one target agent for this rebuttal.",
+      `Topic: ${input.session.prompt}`,
+      `Current debate cycle: ${input.cycleNumber} of ${input.session.debateIntensity}`,
+      `Rebutting agent key: ${input.agent.key}`,
+      `Rebutting agent name: ${input.agent.name}`,
+      "Available target agents:",
+      ...targetCandidates.map(
+        (message) =>
+          `- ${message.agentKey} | ${message.agentName} | Claim: ${message.content.split("\n")[0]?.trim() || message.content.trim()}`
+      ),
+      "Return JSON matching this shape exactly:",
+      '{"targetAgentKey":"","weakestClaim":"","attackPoint":""}'
+    ].join("\n"),
+    schema: rebuttalTargetSchema,
+    retries: 1
+  });
+
+  await input.assertActive?.();
+  input.usage.totalPromptTokens += response.usage.promptTokens;
+  input.usage.totalCompletionTokens += response.usage.completionTokens;
+  await input.callbacks?.onUsage?.(response.usage);
+
+  const selectedTarget = targetCandidates.find((message) => message.agentKey === response.data.targetAgentKey);
+  const plan = selectedTarget ? response.data : fallback;
+  const targetMessage = targetCandidates.find((message) => message.agentKey === plan.targetAgentKey) ?? targetCandidates[0];
+
+  return {
+    targetAgentKey: targetMessage.agentKey,
+    targetAgentName: targetMessage.agentName,
+    weakestClaim: plan.weakestClaim,
+    attackPoint: plan.attackPoint
+  };
 }
 
 async function streamMessageGeneration(input: {
@@ -341,6 +188,8 @@ async function streamMessageGeneration(input: {
   agentName: string;
   role: MessageRecord["role"];
   kind: MessageRecord["kind"];
+  targetAgentKey?: string;
+  rebuttalTarget?: RebuttalTargetMetadata;
   system: string;
   prompt: string;
 }): Promise<{ message: MessageRecord; usage: ProviderUsage; reasoning: string }> {
@@ -354,6 +203,7 @@ async function streamMessageGeneration(input: {
     agentName: input.agentName,
     role: input.role,
     kind: input.kind,
+    targetAgentKey: input.targetAgentKey ?? null,
     content: "",
     reasoning: "",
     createdAt: nowIso(),
@@ -364,6 +214,7 @@ async function streamMessageGeneration(input: {
     provider: input.session.provider,
     model: input.session.model,
     variant: input.session.thinkingIntensity,
+    enableWebSearch: input.session.enableWebSearch,
     system: input.system,
     prompt: input.prompt,
     onTextDelta: async (delta, snapshot) => {
@@ -379,6 +230,7 @@ async function streamMessageGeneration(input: {
         agentName: input.agentName,
         role: input.role,
         kind: input.kind,
+        targetAgentKey: input.targetAgentKey ?? null,
         delta,
         snapshot,
         createdAt: liveMessage.createdAt
@@ -397,6 +249,7 @@ async function streamMessageGeneration(input: {
         agentName: input.agentName,
         role: input.role,
         kind: input.kind,
+        targetAgentKey: input.targetAgentKey ?? null,
         delta,
         snapshot,
         createdAt: liveMessage.createdAt
@@ -405,6 +258,10 @@ async function streamMessageGeneration(input: {
   });
 
   await input.assertActive?.();
+
+  const finalContent = input.kind === "rebuttal" && input.rebuttalTarget
+    ? prependRebuttalTargetHeader(response.text, input.rebuttalTarget)
+    : response.text;
 
   const message: MessageRecord = {
     id: liveMessage.id,
@@ -415,7 +272,8 @@ async function streamMessageGeneration(input: {
     agentName: input.agentName,
     role: input.role,
     kind: input.kind,
-    content: response.text,
+    targetAgentKey: input.targetAgentKey ?? null,
+    content: finalContent,
     createdAt: liveMessage.createdAt
   };
 
@@ -430,7 +288,8 @@ async function streamMessageGeneration(input: {
     agentName: input.agentName,
     role: input.role,
     kind: input.kind,
-    content: response.text,
+    targetAgentKey: input.targetAgentKey ?? null,
+    content: finalContent,
     reasoning: liveMessage.reasoning,
     createdAt: liveMessage.createdAt
   });
@@ -448,6 +307,15 @@ export async function runCouncilSession(input: {
   provider: CouncilProvider;
   callbacks?: RunSessionCallbacks;
   assertActive?: RunActivityGuard;
+  retrieveMemories?: (input: {
+    session: SessionRecord;
+    runId: string;
+    agentKey: string;
+    agentName: string;
+    kind: MessageRecord["kind"];
+    query: string;
+    excludeMessageIds: string[];
+  }) => Promise<MemorySearchResult[]> | MemorySearchResult[];
 }): Promise<RunSessionResult> {
   const preset = input.session.customPreset ?? getPresetDefinition(input.session.presetId);
   if (!preset) {
@@ -460,7 +328,7 @@ export async function runCouncilSession(input: {
     totalCompletionTokens: 0
   };
   const contextState: ContextState = {
-    compressedSummary: null,
+    debateState: createEmptyDebateState(),
     recentMessages: []
   };
 
@@ -476,7 +344,7 @@ export async function runCouncilSession(input: {
   let roundNumber = 1;
 
   for (let cycleNumber = 1; cycleNumber <= input.session.debateIntensity; cycleNumber += 1) {
-    await maybeCompressContext({
+    await refreshDebateState({
       session: input.session,
       provider: input.provider,
       state: contextState,
@@ -508,6 +376,16 @@ export async function runCouncilSession(input: {
     for (const agent of preset.agents) {
       await input.assertActive?.();
 
+      const retrievedMemories = await loadRetrievedMemories({
+        session: input.session,
+        runId: input.runId,
+        agentKey: agent.key,
+        agentName: agent.name,
+        kind: "opinion",
+        state: contextState,
+        retrieveMemories: input.retrieveMemories
+      });
+
       const generated = await streamMessageGeneration({
         session: input.session,
         round: opinionRound,
@@ -524,7 +402,9 @@ export async function runCouncilSession(input: {
           session: input.session,
           agentName: agent.name,
           cycleNumber,
-          context: renderContext(contextState)
+          debateState: contextState.debateState,
+          recentMessages: contextState.recentMessages,
+          retrievedMemories
         })
       });
 
@@ -538,7 +418,7 @@ export async function runCouncilSession(input: {
       });
     }
 
-    await maybeCompressContext({
+    await refreshDebateState({
       session: input.session,
       provider: input.provider,
       state: contextState,
@@ -570,6 +450,27 @@ export async function runCouncilSession(input: {
     for (const agent of preset.agents) {
       await input.assertActive?.();
 
+      const rebuttalTarget = await selectRebuttalTarget({
+        session: input.session,
+        provider: input.provider,
+        agent,
+        cycleNumber,
+        opinionMessages: opinionRound.messages,
+        usage,
+        callbacks: input.callbacks,
+        assertActive: input.assertActive
+      });
+
+      const retrievedMemories = await loadRetrievedMemories({
+        session: input.session,
+        runId: input.runId,
+        agentKey: agent.key,
+        agentName: agent.name,
+        kind: "rebuttal",
+        state: contextState,
+        retrieveMemories: input.retrieveMemories
+      });
+
       const generated = await streamMessageGeneration({
         session: input.session,
         round: rebuttalRound,
@@ -581,13 +482,27 @@ export async function runCouncilSession(input: {
         agentName: agent.name,
         role: "agent",
         kind: "rebuttal",
+        targetAgentKey: rebuttalTarget.targetAgentKey,
+        rebuttalTarget: {
+          targetAgentKey: rebuttalTarget.targetAgentKey,
+          targetAgentName: rebuttalTarget.targetAgentName,
+          weakestClaim: rebuttalTarget.weakestClaim,
+          attackPoint: rebuttalTarget.attackPoint
+        },
         system: formatAgentSystem(agent, input.session),
         prompt: formatRebuttalPrompt({
           session: input.session,
           agentName: agent.name,
+          agentKey: agent.key,
           cycleNumber,
-          context: renderContext(contextState),
-          opinionMessages: opinionRound.messages
+          debateState: contextState.debateState,
+          recentMessages: contextState.recentMessages,
+          retrievedMemories,
+          opinionMessages: opinionRound.messages,
+          targetAgentKey: rebuttalTarget.targetAgentKey,
+          targetAgentName: rebuttalTarget.targetAgentName,
+          weakestClaim: rebuttalTarget.weakestClaim,
+          attackPoint: rebuttalTarget.attackPoint
         })
       });
 
@@ -602,7 +517,7 @@ export async function runCouncilSession(input: {
     }
   }
 
-  await maybeCompressContext({
+  await refreshDebateState({
     session: input.session,
     provider: input.provider,
     state: contextState,
@@ -626,7 +541,8 @@ export async function runCouncilSession(input: {
     ].join("\n"),
     prompt: formatModeratorPrompt({
       session: input.session,
-      context: renderContext(contextState)
+      debateState: contextState.debateState,
+      recentMessages: contextState.recentMessages
     }),
     schema: moderatorSummarySchema
   });
@@ -698,7 +614,7 @@ export async function runCouncilSession(input: {
     }
   });
 
-  await maybeCompressContext({
+  await refreshDebateState({
     session: input.session,
     provider: input.provider,
     state: contextState,
@@ -722,7 +638,8 @@ export async function runCouncilSession(input: {
     ].join("\n"),
     prompt: formatFinalPrompt({
       session: input.session,
-      context: renderContext(contextState),
+      debateState: contextState.debateState,
+      recentMessages: contextState.recentMessages,
       moderatorSummary: moderatorResponse.data
     }),
     schema: finalDecisionSchema,

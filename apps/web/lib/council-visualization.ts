@@ -1,4 +1,5 @@
 import type { LiveMessageRecord, MessageRecord, PanelPreset, RunStage, SessionDetailResponse } from "@ship-council/shared";
+import { parseRebuttalTargetHeader } from "@ship-council/shared/types";
 
 export type VisualizationStageStatus = "pending" | "active" | "completed";
 export type VisualizationAgentStatus = "queued" | "active" | "done";
@@ -47,6 +48,7 @@ export type VisualizationTimelineMessage = {
   agentName: string;
   role: MessageRecord["role"];
   kind: MessageRecord["kind"];
+  targetAgentKey?: string | null;
   content: string;
   reasoning: string;
   createdAt: string;
@@ -76,6 +78,22 @@ export type DebateVisualization = {
 };
 
 const STAGE_ORDER: RunStage[] = ["opening", "rebuttal", "summary", "final"];
+
+export function summarizeActivityFeedLabel(content: string): string {
+  return content
+    .replace(/```[\s\S]*?```/g, (block) => block.replace(/```[a-zA-Z0-9_-]*\n?|```/g, " "))
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/^\s{0,3}(#{1,6})\s+/gm, "")
+    .replace(/^\s*[-*+]\s+/gm, "")
+    .replace(/^\s*\d+[.)]\s+/gm, "")
+    .replace(/(?:\*\*|__)(.*?)?(?:\*\*|__)/g, "$1")
+    .replace(/(?:\*|_)(.*?)?(?:\*|_)/g, "$1")
+    .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 function getExpectedRounds(detail: SessionDetailResponse): Record<RunStage, number> {
   return {
@@ -166,6 +184,7 @@ export function buildDebateVisualization(input: {
     const messageMap = new Map<string, VisualizationTimelineMessage>();
 
     for (const message of round.messages) {
+      const parsed = parseRebuttalTargetHeader(message.content);
       messageMap.set(message.id, {
         id: message.id,
         roundId: round.id,
@@ -173,7 +192,8 @@ export function buildDebateVisualization(input: {
         agentName: message.agentName,
         role: message.role,
         kind: message.kind,
-        content: message.content,
+        targetAgentKey: message.targetAgentKey ?? parsed.metadata?.targetAgentKey ?? null,
+        content: parsed.body,
         reasoning: "",
         createdAt: message.createdAt,
         isStreaming: false
@@ -184,14 +204,18 @@ export function buildDebateVisualization(input: {
       const existing = messageMap.get(message.id);
 
       if (existing) {
+        const parsed = parseRebuttalTargetHeader(message.content);
         messageMap.set(message.id, {
           ...existing,
+          targetAgentKey: message.targetAgentKey ?? parsed.metadata?.targetAgentKey ?? existing.targetAgentKey ?? null,
+          content: parsed.body,
           reasoning: message.reasoning,
           isStreaming: false
         });
         continue;
       }
 
+      const parsed = parseRebuttalTargetHeader(message.content);
       messageMap.set(message.id, {
         id: message.id,
         roundId: message.roundId,
@@ -199,7 +223,8 @@ export function buildDebateVisualization(input: {
         agentName: message.agentName,
         role: message.role,
         kind: message.kind,
-        content: message.content,
+        targetAgentKey: message.targetAgentKey ?? parsed.metadata?.targetAgentKey ?? null,
+        content: parsed.body,
         reasoning: message.reasoning,
         createdAt: message.createdAt,
         isStreaming: message.status !== "complete"
@@ -289,7 +314,7 @@ export function buildDebateVisualization(input: {
           agentKey: message.agentKey,
           agentName: message.agentName,
           kind: message.kind,
-          label: message.content.split("\n")[0] ?? message.content,
+          label: summarizeActivityFeedLabel(message.content),
           createdAt: message.createdAt,
           isStreaming: message.isStreaming
         })

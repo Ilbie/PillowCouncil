@@ -1,14 +1,16 @@
 import { getSessionDetail } from "@ship-council/shared";
 
+import { RouteError, withErrorHandler } from "@/app/api/_utils";
+
 export const runtime = "nodejs";
 
-export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
+export const GET = withErrorHandler(async (_: Request, context: { params: Promise<{ id: string }> }) => {
   const { id } = await context.params;
   const detail = getSessionDetail(id);
 
   if (!detail) {
-    return Response.json({ error: "Session not found" }, { status: 404 });
+    throw new RouteError(404, "Session not found");
   }
 
   return Response.json(detail);
-}
+}, { fallbackMessage: "Failed to load session" });

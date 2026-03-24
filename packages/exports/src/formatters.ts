@@ -1,4 +1,5 @@
 import type { SessionDetailResponse } from "@ship-council/shared";
+import { parseRebuttalTargetHeader } from "@ship-council/shared/types";
 
 function formatLanguage(language: string): string {
   switch (language) {
@@ -58,8 +59,14 @@ export function toMarkdown(detail: SessionDetailResponse): string {
     }
 
     for (const message of round.messages) {
+      const parsed = parseRebuttalTargetHeader(message.content);
       lines.push(`### ${message.agentName}`);
-      lines.push(message.content, "");
+      if (message.kind === "rebuttal" && parsed.metadata) {
+        lines.push(`- Targets: ${parsed.metadata.targetAgentName} (${parsed.metadata.targetAgentKey})`);
+        lines.push(`- Claim: ${parsed.metadata.weakestClaim}`);
+        lines.push(`- Attack Point: ${parsed.metadata.attackPoint}`);
+      }
+      lines.push(parsed.body, "");
     }
   }
 

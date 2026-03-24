@@ -26,6 +26,7 @@ function createConnection(): Database.Database {
       preset_agents TEXT,
       provider TEXT NOT NULL DEFAULT 'openai',
       model TEXT NOT NULL,
+      enable_web_search INTEGER NOT NULL DEFAULT 0,
       thinking_intensity TEXT NOT NULL DEFAULT 'balanced',
       debate_intensity TEXT NOT NULL DEFAULT '2',
       round_count INTEGER NOT NULL,
@@ -42,6 +43,8 @@ function createConnection(): Database.Database {
       provider_id TEXT NOT NULL DEFAULT '',
       model_id TEXT NOT NULL DEFAULT '',
       auth_mode TEXT NOT NULL,
+      enable_mcp INTEGER NOT NULL DEFAULT 1,
+      enable_skills INTEGER NOT NULL DEFAULT 1,
       updated_at TEXT NOT NULL
     );
 
@@ -54,6 +57,7 @@ function createConnection(): Database.Database {
       started_at TEXT,
       completed_at TEXT,
       error_message TEXT,
+      debate_state TEXT NOT NULL DEFAULT '{"agreedPoints":[],"activeConflicts":[],"pendingQuestions":[]}',
       total_prompt_tokens INTEGER NOT NULL DEFAULT 0,
       total_completion_tokens INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
@@ -83,6 +87,7 @@ function createConnection(): Database.Database {
       agent_name TEXT NOT NULL,
       role TEXT NOT NULL,
       kind TEXT NOT NULL,
+      target_agent_key TEXT,
       content TEXT NOT NULL,
       created_at TEXT NOT NULL,
       FOREIGN KEY (session_id) REFERENCES sessions(id),
@@ -126,6 +131,90 @@ function createConnection(): Database.Database {
     CREATE INDEX IF NOT EXISTS idx_rounds_run_round ON rounds(run_id, round_number ASC);
     CREATE INDEX IF NOT EXISTS idx_messages_run_round ON messages(run_id, round_id, created_at ASC);
     CREATE INDEX IF NOT EXISTS idx_todos_run ON todos(run_id);
+
+    CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+      message_id UNINDEXED,
+      session_id UNINDEXED,
+      run_id UNINDEXED,
+      round_id UNINDEXED,
+      round_number UNINDEXED,
+      stage UNINDEXED,
+      agent_key UNINDEXED,
+      agent_name UNINDEXED,
+      kind UNINDEXED,
+      created_at UNINDEXED,
+      content
+    );
+
+    CREATE TRIGGER IF NOT EXISTS messages_fts_after_insert
+    AFTER INSERT ON messages
+    BEGIN
+      INSERT INTO messages_fts (
+        message_id,
+        session_id,
+        run_id,
+        round_id,
+        round_number,
+        stage,
+        agent_key,
+        agent_name,
+        kind,
+        created_at,
+        content
+      )
+      VALUES (
+        new.id,
+        new.session_id,
+        new.run_id,
+        new.round_id,
+        COALESCE((SELECT round_number FROM rounds WHERE id = new.round_id), 0),
+        (SELECT stage FROM rounds WHERE id = new.round_id),
+        new.agent_key,
+        new.agent_name,
+        new.kind,
+        new.created_at,
+        new.content
+      );
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS messages_fts_after_delete
+    AFTER DELETE ON messages
+    BEGIN
+      DELETE FROM messages_fts WHERE message_id = old.id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS messages_fts_after_update
+    AFTER UPDATE ON messages
+    BEGIN
+      DELETE FROM messages_fts WHERE message_id = old.id;
+
+      INSERT INTO messages_fts (
+        message_id,
+        session_id,
+        run_id,
+        round_id,
+        round_number,
+        stage,
+        agent_key,
+        agent_name,
+        kind,
+        created_at,
+        content
+      )
+      VALUES (
+        new.id,
+        new.session_id,
+        new.run_id,
+        new.round_id,
+        COALESCE((SELECT round_number FROM rounds WHERE id = new.round_id), 0),
+        (SELECT stage FROM rounds WHERE id = new.round_id),
+        new.agent_key,
+        new.agent_name,
+        new.kind,
+        new.created_at,
+        new.content
+      );
+    END;
   `);
 
   const sessionColumns = db.prepare("PRAGMA table_info(sessions)").all() as Array<{ name: string }>;
@@ -144,6 +233,9 @@ function createConnection(): Database.Database {
   if (!sessionColumns.some((column) => column.name === "thinking_intensity")) {
     db.exec(`ALTER TABLE sessions ADD COLUMN thinking_intensity TEXT NOT NULL DEFAULT 'balanced';`);
   }
+  if (!sessionColumns.some((column) => column.name === "enable_web_search")) {
+    db.exec(`ALTER TABLE sessions ADD COLUMN enable_web_search INTEGER NOT NULL DEFAULT 0;`);
+  }
   if (!sessionColumns.some((column) => column.name === "debate_intensity")) {
     db.exec(`ALTER TABLE sessions ADD COLUMN debate_intensity TEXT NOT NULL DEFAULT '2';`);
   }
@@ -159,12 +251,61 @@ function createConnection(): Database.Database {
   `);
 
   const appSettingsColumns = db.prepare("PRAGMA table_info(app_settings)").all() as Array<{ name: string }>;
+  if (!appSettingsColumns.some((column) => column.name === "enable_mcp")) {
+    db.exec(`ALTER TABLE app_settings ADD COLUMN enable_mcp INTEGER NOT NULL DEFAULT 1;`);
+  }
+  if (!appSettingsColumns.some((column) => column.name === "enable_skills")) {
+    db.exec(`ALTER TABLE app_settings ADD COLUMN enable_skills INTEGER NOT NULL DEFAULT 1;`);
+  }
   if (!appSettingsColumns.some((column) => column.name === "provider_id")) {
     db.exec(`ALTER TABLE app_settings ADD COLUMN provider_id TEXT NOT NULL DEFAULT '';`);
   }
   if (!appSettingsColumns.some((column) => column.name === "model_id")) {
     db.exec(`ALTER TABLE app_settings ADD COLUMN model_id TEXT NOT NULL DEFAULT '';`);
   }
+
+  const messageColumns = db.prepare("PRAGMA table_info(messages)").all() as Array<{ name: string }>;
+  if (!messageColumns.some((column) => column.name === "target_agent_key")) {
+    db.exec(`ALTER TABLE messages ADD COLUMN target_agent_key TEXT;`);
+  }
+
+  const runColumns = db.prepare("PRAGMA table_info(session_runs)").all() as Array<{ name: string }>;
+  if (!runColumns.some((column) => column.name === "debate_state")) {
+    db.exec(
+      `ALTER TABLE session_runs ADD COLUMN debate_state TEXT NOT NULL DEFAULT '{"agreedPoints":[],"activeConflicts":[],"pendingQuestions":[]}';`
+    );
+  }
+
+  db.exec(`
+    INSERT INTO messages_fts (
+      message_id,
+      session_id,
+      run_id,
+      round_id,
+      round_number,
+      stage,
+      agent_key,
+      agent_name,
+      kind,
+      created_at,
+      content
+    )
+    SELECT
+      messages.id,
+      messages.session_id,
+      messages.run_id,
+      messages.round_id,
+      COALESCE(rounds.round_number, 0),
+      rounds.stage,
+      messages.agent_key,
+      messages.agent_name,
+      messages.kind,
+      messages.created_at,
+      messages.content
+    FROM messages
+    LEFT JOIN rounds ON rounds.id = messages.round_id
+    WHERE messages.id NOT IN (SELECT message_id FROM messages_fts);
+  `);
 
   return db;
 }

@@ -2,6 +2,8 @@ import { getProviderConnectionState, getProviderOption, loadProviderCatalog, par
 import { appSettingsSchema, getAppSettings, saveConnectionSettings } from "@ship-council/shared";
 import { z } from "zod";
 
+import { RouteError, withErrorHandler } from "@/app/api/_utils";
+
 export const runtime = "nodejs";
 
 const saveConnectionRequestSchema = z.object({
@@ -22,35 +24,28 @@ export async function GET(request: Request) {
   });
 }
 
-export async function POST(request: Request) {
-  try {
-    const payload = saveConnectionRequestSchema.parse(await request.json());
-    const catalog = await loadProviderCatalog({ force: true });
-    const provider = getProviderOption(payload.providerId, catalog);
+export const POST = withErrorHandler(async (request: Request) => {
+  const payload = saveConnectionRequestSchema.parse(await request.json());
+  const catalog = await loadProviderCatalog({ force: true });
+  const provider = getProviderOption(payload.providerId, catalog);
 
-    if (!provider) {
-      return Response.json({ error: "Unknown provider" }, { status: 400 });
-    }
-
-    const authMode = provider.authModes.find((item) => item.id === payload.authMode);
-    if (!authMode || !parseAuthModeId(payload.authMode)) {
-      return Response.json({ error: "Unknown auth method" }, { status: 400 });
-    }
-
-    if (authMode.type === "api" && payload.apiKey.trim()) {
-      await saveApiKeyAuth(payload.providerId, payload.authMode, payload.apiKey);
-    }
-
-    const settings = saveConnectionSettings(appSettingsSchema.pick({ providerId: true, authMode: true }).parse(payload));
-
-    return Response.json({
-      settings,
-      connection: await getProviderConnectionState(settings.providerId, settings.authMode)
-    });
-  } catch (error) {
-    return Response.json(
-      { error: error instanceof Error ? error.message : "Failed to save connection" },
-      { status: 400 }
-    );
+  if (!provider) {
+    throw new RouteError(400, "Unknown provider");
   }
-}
+
+  const authMode = provider.authModes.find((item) => item.id === payload.authMode);
+  if (!authMode || !parseAuthModeId(payload.authMode)) {
+    throw new RouteError(400, "Unknown auth method");
+  }
+
+  if (authMode.type === "api" && payload.apiKey.trim()) {
+    await saveApiKeyAuth(payload.providerId, payload.authMode, payload.apiKey);
+  }
+
+  const settings = saveConnectionSettings(appSettingsSchema.pick({ providerId: true, authMode: true }).parse(payload));
+
+  return Response.json({
+    settings,
+    connection: await getProviderConnectionState(settings.providerId, settings.authMode)
+  });
+}, { fallbackMessage: "Failed to save connection" });

@@ -145,13 +145,29 @@ function scoreModel(model: ProviderModelOption): number {
   );
 }
 
+function inferWebSearchSupport(providerId: string, modelId: string, model: OpenCodeModel): boolean {
+  if (model.toolcall ?? model.tool_call) {
+    return true;
+  }
+
+  const fingerprint = `${providerId} ${modelId} ${model.name ?? ""}`.toLowerCase();
+
+  if (providerId === "openai" && /\bgpt-5([-. ]|$)/.test(fingerprint)) {
+    return true;
+  }
+
+  return false;
+}
+
 function toModelOption(providerId: string, modelId: string, model: OpenCodeModel): ProviderModelOption | null {
   if (!isConversationModel(providerId, modelId, model)) {
     return null;
   }
 
+  const supportsWebSearch = inferWebSearchSupport(providerId, modelId, model);
   const capabilities = [
     model.toolcall ?? model.tool_call ? "tool calling" : null,
+    supportsWebSearch ? "web search" : null,
     model.reasoning ? "reasoning" : null,
     "structured output"
   ].filter((value): value is string => value !== null);
@@ -165,6 +181,7 @@ function toModelOption(providerId: string, modelId: string, model: OpenCodeModel
     contextWindow: model.limit?.context ?? null,
     supportsReasoning: Boolean(model.reasoning),
     supportsToolCall: Boolean(model.toolcall ?? model.tool_call),
+    supportsWebSearch,
     supportsStructuredOutput: true,
     variants
   };
@@ -188,7 +205,6 @@ function toAuthOption(method: ProviderAuthMethod, methodIndex: number, envKeys: 
 }
 
 export function buildProviderAuthOptions(
-  providerId: string,
   authMethods: ProviderAuthMethod[],
   envKeys: string[]
 ): ProviderAuthOption[] {
@@ -215,7 +231,7 @@ function toProviderOption(input: {
   }
 
   const envKeys = Array.isArray(input.provider.env) ? input.provider.env : [];
-  const authModes = buildProviderAuthOptions(input.provider.id, input.authMethods, envKeys);
+  const authModes = buildProviderAuthOptions(input.authMethods, envKeys);
 
   return {
     id: input.provider.id,

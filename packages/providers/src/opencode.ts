@@ -5,7 +5,7 @@ import net from "node:net";
 import path from "node:path";
 
 import { createOpencodeClient, type OpencodeClient } from "@opencode-ai/sdk/v2";
-import { workspaceRoot } from "@ship-council/shared";
+import { getAppSettings, getDefaultAppSettings, type AppSettings, workspaceRoot } from "@ship-council/shared";
 
 type OpencodeHandle = {
   client: OpencodeClient;
@@ -47,21 +47,35 @@ export function getOpenCodeDataHomeRoot(env: NodeJS.ProcessEnv = process.env): s
   return getDefaultDataHomeRoot(env);
 }
 
-export function buildOpencodeServerEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+export function buildOpencodeServerEnv(
+  env: NodeJS.ProcessEnv = process.env,
+  settings: AppSettings = getSafeAppSettings()
+): NodeJS.ProcessEnv {
   return {
     ...env,
     XDG_DATA_HOME: getOpenCodeDataHomeRoot(env),
-    OPENCODE_CONFIG_CONTENT: JSON.stringify({})
+    OPENCODE_CONFIG_CONTENT: JSON.stringify({}),
+    OPENCODE_DISABLE_CLAUDE_CODE_SKILLS: settings.enableSkills ? "0" : "1"
   };
 }
 
+function getSafeAppSettings(): AppSettings {
+  try {
+    return getAppSettings();
+  } catch {
+    return getDefaultAppSettings();
+  }
+}
+
 function getOpencodeHandleCacheKey(env: NodeJS.ProcessEnv = process.env): string {
-  const serverEnv = buildOpencodeServerEnv(env);
+  const settings = getSafeAppSettings();
+  const serverEnv = buildOpencodeServerEnv(env, settings);
 
   return JSON.stringify({
     directory: getOpencodeDirectory(),
     xdgDataHome: serverEnv.XDG_DATA_HOME ?? "",
-    configContent: serverEnv.OPENCODE_CONFIG_CONTENT ?? ""
+    configContent: serverEnv.OPENCODE_CONFIG_CONTENT ?? "",
+    skillsDisabled: serverEnv.OPENCODE_DISABLE_CLAUDE_CODE_SKILLS ?? ""
   });
 }
 
@@ -172,6 +186,10 @@ async function disposeCachedHandle(): Promise<void> {
   cachedHandle = null;
   const resolvedHandle = await activeHandle.promise.catch(() => null);
   resolvedHandle?.server.close();
+}
+
+export async function disposeOpencodeHandle(): Promise<void> {
+  await disposeCachedHandle();
 }
 
 async function withOpencodeHandleLock<T>(action: () => Promise<T>): Promise<T> {

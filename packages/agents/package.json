@@ -6,9 +6,11 @@
   "exports": {
     ".": "./src/index.ts",
     "./constants": "./src/constants.ts",
-    "./generation": "./src/generation.ts"
+    "./generation": "./src/generation.ts",
+    "./preset-generation-service": "./src/preset-generation-service.ts"
   },
   "dependencies": {
+    "@ship-council/providers": "0.1.0",
     "@ship-council/shared": "0.1.0"
   },
   "scripts": {

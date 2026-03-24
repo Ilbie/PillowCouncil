@@ -16,6 +16,7 @@
       "@ship-council/shared": ["packages/shared/src/index.ts"],
       "@ship-council/shared/*": ["packages/shared/src/*"],
       "@ship-council/agents": ["packages/agents/src/index.ts"],
+      "@ship-council/agents/preset-generation-service": ["packages/agents/src/preset-generation-service.ts"],
       "@ship-council/agents/*": ["packages/agents/src/*"],
       "@ship-council/orchestration": ["packages/orchestration/src/index.ts"],
       "@ship-council/orchestration/*": ["packages/orchestration/src/*"],

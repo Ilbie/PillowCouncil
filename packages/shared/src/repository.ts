@@ -5,10 +5,12 @@ import { appSettings, decisions, messages, rounds, sessionRuns, sessions, todos 
 import type {
   AgentDefinition,
   AppSettings,
+  DebateState,
   DebateIntensity,
   DecisionRecord,
   PresetDefinition,
   DecisionSummary,
+  MemorySearchResult,
   MessageRecord,
   RoundRecord,
   RunStage,
@@ -24,6 +26,8 @@ import type {
 } from "./types";
 import {
   agentDefinitionSchema,
+  createEmptyDebateState,
+  debateStateSchema,
   DEBATE_INTENSITY_DEFAULT,
   DEBATE_INTENSITY_MAX,
   DEBATE_INTENSITY_MIN,
@@ -87,6 +91,7 @@ function mapSession(row: typeof sessions.$inferSelect): SessionRecord {
     customPreset,
     provider: row.provider,
     model: row.model,
+    enableWebSearch: Boolean(row.enableWebSearch),
     thinkingIntensity: normalizeThinkingIntensity(row.thinkingIntensity),
     debateIntensity: normalizeDebateIntensity(row.debateIntensity),
     roundCount: row.roundCount,
@@ -137,11 +142,24 @@ function mapRun(row: typeof sessionRuns.$inferSelect | undefined): SessionRunRec
     startedAt: row.startedAt,
     completedAt: row.completedAt,
     errorMessage: row.errorMessage,
+    debateState: parseDebateState(row.debateState),
     totalPromptTokens: row.totalPromptTokens,
     totalCompletionTokens: row.totalCompletionTokens,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt
   };
+}
+
+function parseDebateState(value: string | null | undefined): DebateState {
+  if (!value) {
+    return createEmptyDebateState();
+  }
+
+  try {
+    return debateStateSchema.parse(JSON.parse(value));
+  } catch {
+    return createEmptyDebateState();
+  }
 }
 
 function mapRound(row: typeof rounds.$inferSelect): RoundRecord {
@@ -167,6 +185,7 @@ function mapMessage(row: typeof messages.$inferSelect): MessageRecord {
     agentName: row.agentName,
     role: row.role as MessageRecord["role"],
     kind: row.kind as MessageRecord["kind"],
+    targetAgentKey: row.targetAgentKey,
     content: row.content,
     createdAt: row.createdAt
   };
@@ -210,6 +229,8 @@ export function getDefaultAppSettings(): AppSettings {
     providerId: "",
     modelId: "",
     authMode: "",
+    enableMcp: true,
+    enableSkills: true,
     updatedAt: nowIso()
   };
 }
@@ -227,6 +248,8 @@ export function getAppSettings(): AppSettings {
     providerId: row.providerId || defaults.providerId,
     modelId: row.modelId || defaults.modelId,
     authMode: row.authMode || defaults.authMode,
+    enableMcp: row.enableMcp ?? defaults.enableMcp,
+    enableSkills: row.enableSkills ?? defaults.enableSkills,
     updatedAt: row.updatedAt
   };
 }
@@ -242,6 +265,8 @@ export function saveAppSettings(input: Omit<AppSettings, "updatedAt">): AppSetti
       providerId: input.providerId,
       modelId: input.modelId,
       authMode: input.authMode,
+      enableMcp: input.enableMcp,
+      enableSkills: input.enableSkills,
       updatedAt
     })
     .onConflictDoUpdate({
@@ -251,6 +276,8 @@ export function saveAppSettings(input: Omit<AppSettings, "updatedAt">): AppSetti
         providerId: input.providerId,
         modelId: input.modelId,
         authMode: input.authMode,
+        enableMcp: input.enableMcp,
+        enableSkills: input.enableSkills,
         updatedAt
       }
     })
@@ -260,6 +287,8 @@ export function saveAppSettings(input: Omit<AppSettings, "updatedAt">): AppSetti
     providerId: input.providerId,
     modelId: input.modelId,
     authMode: input.authMode,
+    enableMcp: input.enableMcp,
+    enableSkills: input.enableSkills,
     updatedAt
   };
 }
@@ -270,7 +299,9 @@ export function saveConnectionSettings(input: Pick<AppSettings, "providerId" | "
   return saveAppSettings({
     providerId: input.providerId,
     modelId: current.modelId,
-    authMode: input.authMode
+    authMode: input.authMode,
+    enableMcp: current.enableMcp,
+    enableSkills: current.enableSkills
   });
 }
 
@@ -289,6 +320,7 @@ export function createSession(input: SessionCreateInput): SessionRecord {
     presetAgents: input.customPreset ? serializeCustomPresetAgents(input.customPreset.agents) : null,
     provider: input.provider,
     model: input.model,
+    enableWebSearch: input.enableWebSearch,
     thinkingIntensity: input.thinkingIntensity,
     debateIntensity: String(debateIntensity),
     roundCount,
@@ -306,6 +338,7 @@ export function createSession(input: SessionCreateInput): SessionRecord {
     presetDescription: session.presetDescription ?? null,
     presetAgents: session.presetAgents ?? null,
     thinkingIntensity: session.thinkingIntensity ?? input.thinkingIntensity,
+    enableWebSearch: session.enableWebSearch ?? input.enableWebSearch,
     debateIntensity: String(debateIntensity),
     currentRunId: session.currentRunId ?? null
   });
@@ -339,6 +372,7 @@ export function startSessionRun(sessionId: string): SessionRunRecord {
     startedAt: now,
     completedAt: null,
     errorMessage: null,
+    debateState: JSON.stringify(createEmptyDebateState()),
     totalPromptTokens: 0,
     totalCompletionTokens: 0,
     createdAt: now,
@@ -364,6 +398,7 @@ export function startSessionRun(sessionId: string): SessionRunRecord {
     startedAt: run.startedAt ?? null,
     completedAt: run.completedAt ?? null,
     errorMessage: run.errorMessage ?? null,
+    debateState: run.debateState ?? JSON.stringify(createEmptyDebateState()),
     totalPromptTokens: run.totalPromptTokens ?? 0,
     totalCompletionTokens: run.totalCompletionTokens ?? 0
   })!;
@@ -542,9 +577,9 @@ export function completeRun(runId: string, artifacts: RunArtifacts): void {
       for (const message of round.messages) {
         sqlite
           .prepare(
-            `INSERT INTO messages
-              (id, session_id, run_id, round_id, agent_key, agent_name, role, kind, content, created_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           `INSERT INTO messages
+              (id, session_id, run_id, round_id, agent_key, agent_name, role, kind, target_agent_key, content, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
           )
           .run(
             message.id,
@@ -555,6 +590,7 @@ export function completeRun(runId: string, artifacts: RunArtifacts): void {
             message.agentName,
             message.role,
             message.kind,
+            message.targetAgentKey ?? null,
             message.content,
             message.createdAt
           );
@@ -645,8 +681,8 @@ export function appendMessageRecord(
   sqlite
     .prepare(
       `INSERT INTO messages
-        (id, session_id, run_id, round_id, agent_key, agent_name, role, kind, content, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+         (id, session_id, run_id, round_id, agent_key, agent_name, role, kind, target_agent_key, content, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
     .run(
       message.id,
@@ -657,6 +693,7 @@ export function appendMessageRecord(
       message.agentName,
       message.role,
       message.kind,
+      message.targetAgentKey ?? null,
       message.content,
       message.createdAt
     );
@@ -696,6 +733,86 @@ export function accumulateRunUsage(
 export function updateRoundSummary(roundId: string, summary: string | null): void {
   const sqlite = getSQLite();
   sqlite.prepare(`UPDATE rounds SET summary = ? WHERE id = ?`).run(summary, roundId);
+}
+
+export function updateRunDebateState(runId: string, state: DebateState): void {
+  const sqlite = getSQLite();
+  const now = nowIso();
+
+  sqlite
+    .prepare(
+      `UPDATE session_runs
+       SET debate_state = ?,
+           updated_at = ?
+       WHERE id = ?`
+    )
+    .run(JSON.stringify(state), now, runId);
+}
+
+export function searchRunMessageMemories(input: {
+  sessionId: string;
+  runId: string;
+  query: string;
+  limit?: number;
+  excludeMessageIds?: string[];
+}): MemorySearchResult[] {
+  const sqlite = getSQLite();
+  const query = input.query.trim();
+  if (!query) {
+    return [];
+  }
+
+  const limit = Math.max(1, Math.min(input.limit ?? 3, 10));
+  const excludeMessageIds = input.excludeMessageIds ?? [];
+  const exclusionSql = excludeMessageIds.length > 0
+    ? ` AND message_id NOT IN (${excludeMessageIds.map(() => "?").join(", ")})`
+    : "";
+
+  const rows = sqlite
+    .prepare(
+      `SELECT
+         message_id,
+         round_id,
+         round_number,
+         stage,
+         agent_key,
+         agent_name,
+         kind,
+         content,
+         created_at,
+         (-bm25(messages_fts)) AS score
+       FROM messages_fts
+       WHERE messages_fts MATCH ?
+         AND session_id = ?
+         AND run_id = ?${exclusionSql}
+       ORDER BY bm25(messages_fts)
+       LIMIT ?`
+    )
+    .all(query, input.sessionId, input.runId, ...excludeMessageIds, limit) as Array<{
+      message_id: string;
+      round_id: string | null;
+      round_number: number | null;
+      stage: string | null;
+      agent_key: string;
+      agent_name: string;
+      kind: MessageRecord["kind"];
+      content: string;
+      created_at: string;
+      score: number;
+    }>;
+
+  return rows.map((row) => ({
+    messageId: row.message_id,
+    roundId: row.round_id,
+    roundNumber: row.round_number,
+    stage: (row.stage as RunStage | null) ?? null,
+    agentKey: row.agent_key,
+    agentName: row.agent_name,
+    kind: row.kind,
+    content: row.content,
+    createdAt: row.created_at,
+    score: row.score
+  }));
 }
 
 export function saveDecisionArtifacts(runId: string, sessionId: string, decision: DecisionSummary): void {

@@ -13,7 +13,7 @@ export const TODO_STATUSES = ["pending", "done"] as const;
 export type TodoStatus = (typeof TODO_STATUSES)[number];
 
 export const DEBATE_INTENSITY_MIN = 1;
-export const DEBATE_INTENSITY_MAX = 5;
+export const DEBATE_INTENSITY_MAX = 20;
 export const DEBATE_INTENSITY_DEFAULT = 2;
 export type DebateIntensity = number;
 
@@ -28,6 +28,13 @@ export type ProviderModelVariantOption = {
   label: string;
   description: string;
   reasoningEffort?: string | null;
+};
+
+export type RebuttalTargetMetadata = {
+  targetAgentKey: string;
+  targetAgentName: string;
+  weakestClaim: string;
+  attackPoint: string;
 };
 
 export type ModelThinkingOption = {
@@ -90,9 +97,10 @@ export const sessionCreateInputSchema = z.object({
   customPreset: presetDefinitionSchema.optional(),
   provider: z.string().trim().min(1).max(50).default("openai"),
   model: z.string().trim().min(1).max(120),
+  enableWebSearch: z.boolean().default(false),
   thinkingIntensity: z.string().trim().min(1).max(120).default("balanced"),
   debateIntensity: z.number().int().min(DEBATE_INTENSITY_MIN).max(DEBATE_INTENSITY_MAX).default(DEBATE_INTENSITY_DEFAULT),
-  roundCount: z.number().int().min(4).max(20).default(4),
+  roundCount: z.number().int().min(4).max(100).default(4),
   language: z.enum(SESSION_LANGUAGES).default("ko")
 }).superRefine((value, context) => {
   if (value.customPreset && value.customPreset.id !== value.presetId) {
@@ -131,6 +139,22 @@ export const todoItemSchema = z.object({
 
 export type TodoItemInput = z.output<typeof todoItemSchema>;
 
+export const debateStateSchema = z.object({
+  agreedPoints: z.array(z.string().min(1)).max(8),
+  activeConflicts: z.array(z.string().min(1)).max(8),
+  pendingQuestions: z.array(z.string().min(1)).max(8)
+});
+
+export type DebateState = z.output<typeof debateStateSchema>;
+
+export function createEmptyDebateState(): DebateState {
+  return {
+    agreedPoints: [],
+    activeConflicts: [],
+    pendingQuestions: []
+  };
+}
+
 export const moderatorSummarySchema = z.object({
   keyPoints: z.array(z.string().min(1)).min(2).max(5),
   agreements: z.array(z.string().min(1)).min(1).max(5),
@@ -162,6 +186,7 @@ export type ProviderModelOption = {
   contextWindow?: number | null;
   supportsReasoning?: boolean;
   supportsToolCall?: boolean;
+  supportsWebSearch?: boolean;
   supportsStructuredOutput?: boolean;
   variants?: ProviderModelVariantOption[];
 };
@@ -212,7 +237,9 @@ export type ProviderOption = {
 export const appSettingsSchema = z.object({
   providerId: z.string().trim().max(120).default(""),
   modelId: z.string().trim().max(240).default(""),
-  authMode: z.string().trim().max(120).default("")
+  authMode: z.string().trim().max(120).default(""),
+  enableMcp: z.boolean().default(true),
+  enableSkills: z.boolean().default(true)
 });
 
 export type AppSettings = z.output<typeof appSettingsSchema> & {
@@ -227,6 +254,7 @@ export type SessionRecord = {
   customPreset: PresetDefinition | null;
   provider: string;
   model: string;
+  enableWebSearch: boolean;
   thinkingIntensity: ThinkingIntensity;
   debateIntensity: DebateIntensity;
   roundCount: number;
@@ -246,10 +274,24 @@ export type SessionRunRecord = {
   startedAt: string | null;
   completedAt: string | null;
   errorMessage: string | null;
+  debateState: DebateState;
   totalPromptTokens: number;
   totalCompletionTokens: number;
   createdAt: string;
   updatedAt: string;
+};
+
+export type MemorySearchResult = {
+  messageId: string;
+  roundId: string | null;
+  roundNumber: number | null;
+  stage: RunStage | null;
+  agentKey: string;
+  agentName: string;
+  kind: MessageRecord["kind"];
+  content: string;
+  createdAt: string;
+  score: number;
 };
 
 export type RoundRecord = {
@@ -272,6 +314,7 @@ export type MessageRecord = {
   agentName: string;
   role: "agent" | "moderator" | "system";
   kind: "opinion" | "rebuttal" | "summary" | "final";
+  targetAgentKey?: string | null;
   content: string;
   createdAt: string;
 };
@@ -288,6 +331,7 @@ export type LiveMessageRecord = {
   agentName: string;
   role: MessageRecord["role"];
   kind: MessageRecord["kind"];
+  targetAgentKey?: string | null;
   content: string;
   reasoning: string;
   createdAt: string;
@@ -308,38 +352,115 @@ type RunStreamMessageEventBase = RunStreamEventBase & {
   agentName: string;
   role: MessageRecord["role"];
   kind: MessageRecord["kind"];
+  targetAgentKey?: string | null;
 };
+
+function sanitizeRebuttalHeaderValue(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+export function formatRebuttalTargetHeader(metadata: RebuttalTargetMetadata): string {
+  return [
+    "[TARGET]",
+    `agent_key: ${sanitizeRebuttalHeaderValue(metadata.targetAgentKey)}`,
+    `agent_name: ${sanitizeRebuttalHeaderValue(metadata.targetAgentName)}`,
+    `claim: ${sanitizeRebuttalHeaderValue(metadata.weakestClaim)}`,
+    `attack_point: ${sanitizeRebuttalHeaderValue(metadata.attackPoint)}`,
+    "[/TARGET]"
+  ].join("\n");
+}
+
+export function prependRebuttalTargetHeader(content: string, metadata: RebuttalTargetMetadata): string {
+  return `${formatRebuttalTargetHeader(metadata)}\n\n${content.trim()}`;
+}
+
+export function parseRebuttalTargetHeader(content: string): {
+  metadata: RebuttalTargetMetadata | null;
+  body: string;
+} {
+  const normalizedContent = content.replace(/\r\n/g, "\n");
+  if (!normalizedContent.startsWith("[TARGET]\n")) {
+    return {
+      metadata: null,
+      body: content
+    };
+  }
+
+  const endMarker = "\n[/TARGET]";
+  const endIndex = normalizedContent.indexOf(endMarker);
+  if (endIndex === -1) {
+    return {
+      metadata: null,
+      body: content
+    };
+  }
+
+  const headerLines = normalizedContent.slice(0, endIndex).split("\n").slice(1);
+  const headerMap = new Map<string, string>();
+  for (const line of headerLines) {
+    const separatorIndex = line.indexOf(":");
+    if (separatorIndex === -1) {
+      continue;
+    }
+
+    const key = line.slice(0, separatorIndex).trim();
+    const value = line.slice(separatorIndex + 1).trim();
+    headerMap.set(key, value);
+  }
+
+  const targetAgentKey = headerMap.get("agent_key");
+  const targetAgentName = headerMap.get("agent_name");
+  const weakestClaim = headerMap.get("claim");
+  const attackPoint = headerMap.get("attack_point");
+
+  if (!targetAgentKey || !targetAgentName || !weakestClaim || !attackPoint) {
+    return {
+      metadata: null,
+      body: content
+    };
+  }
+
+  return {
+    metadata: {
+      targetAgentKey,
+      targetAgentName,
+      weakestClaim,
+      attackPoint
+    },
+    body: normalizedContent.slice(endIndex + endMarker.length).trimStart()
+  };
+}
 
 export type RunStreamEvent =
   | (RunStreamEventBase & {
-      type: "status";
-      status: "run-started" | "round-started";
-      stage: RunStage | null;
-      roundId?: string;
-      title?: string;
-    })
+    type: "status";
+    status: "run-started" | "round-started";
+    stage: RunStage | null;
+    roundId?: string;
+    title?: string;
+  })
   | (RunStreamMessageEventBase & {
-      type: "text-delta";
-      delta: string;
-      snapshot: string;
-    })
+    type: "text-delta";
+    delta: string;
+    snapshot: string;
+  })
   | (RunStreamMessageEventBase & {
-      type: "reasoning-delta";
-      delta: string;
-      snapshot: string;
-    })
+    type: "reasoning-delta";
+    delta: string;
+    snapshot: string;
+  })
   | (RunStreamMessageEventBase & {
-      type: "message-complete";
-      content: string;
-      reasoning: string;
-    })
+    type: "message-complete";
+    content: string;
+    reasoning: string;
+  })
   | (RunStreamEventBase & {
-      type: "run-complete";
-    })
+    type: "run-complete";
+  })
   | (RunStreamEventBase & {
-      type: "run-error";
-      error: string;
-    });
+    type: "run-error";
+    error: string;
+  });
 
 export type DecisionRecord = {
   id: string;

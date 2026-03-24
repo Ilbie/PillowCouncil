@@ -1,7 +1,8 @@
 import { zodToJsonSchema } from "zod-to-json-schema";
 import { z } from "zod";
+import type { McpLocalConfig, McpRemoteConfig } from "@opencode-ai/sdk/v2";
 
-import { createId, nowIso, type ProviderAuthOption } from "@ship-council/shared";
+import { createId, getAppSettings, getDefaultAppSettings, nowIso, type ProviderAuthOption } from "@ship-council/shared";
 
 import { getProviderOption, loadProviderCatalog } from "./catalog";
 import { getOpencodeClient, getOpencodeDirectory } from "./opencode";
@@ -17,11 +18,6 @@ export type TextGenerationResult = {
   usage: ProviderUsage;
 };
 
-type GenerationStreamCallbacks = {
-  onTextDelta?: (delta: string, snapshot: string) => Promise<void> | void;
-  onReasoningDelta?: (delta: string, snapshot: string) => Promise<void> | void;
-};
-
 export interface CouncilProvider {
   generateText(input: {
     provider: string;
@@ -29,6 +25,7 @@ export interface CouncilProvider {
     variant?: string;
     system: string;
     prompt: string;
+    enableWebSearch?: boolean;
     temperature?: number;
     onTextDelta?: (delta: string, snapshot: string) => Promise<void> | void;
     onReasoningDelta?: (delta: string, snapshot: string) => Promise<void> | void;
@@ -40,6 +37,7 @@ export interface CouncilProvider {
     system: string;
     prompt: string;
     schema: z.ZodSchema<T>;
+    enableWebSearch?: boolean;
     temperature?: number;
     retries?: number;
   }): Promise<{ data: T; raw: string; usage: ProviderUsage }>;
@@ -91,12 +89,68 @@ function validateConnectedProvider(providerLabel: string, authModes: ProviderAut
   }
 }
 
+function resolveEffectiveMcpEnabled(
+  value: McpLocalConfig | McpRemoteConfig | { enabled: boolean },
+  globalEnabled: boolean
+): boolean {
+  if (!globalEnabled) {
+    return false;
+  }
+
+  return "enabled" in value ? value.enabled !== false : true;
+}
+
+export async function syncOpenCodeRuntimeSettings(input: {
+  client: Awaited<ReturnType<typeof getOpencodeClient>>;
+  directory: string;
+  settings?: ReturnType<typeof getAppSettings>;
+}): Promise<void> {
+  const settings = input.settings ?? getSafeAppSettings();
+  const configClient = input.client.config;
+
+  if (!configClient?.get || !configClient?.update) {
+    return;
+  }
+
+  const currentConfig = await configClient.get({ directory: input.directory });
+  if (currentConfig.error || !currentConfig.data?.mcp) {
+    return;
+  }
+
+  const mcpClient = input.client.mcp;
+  if (!mcpClient?.connect || !mcpClient?.disconnect) {
+    return;
+  }
+
+  const desiredStates = Object.entries(currentConfig.data.mcp).map(([serverId, config]) => ({
+    serverId,
+    enabled: resolveEffectiveMcpEnabled(config, settings.enableMcp)
+  }));
+
+  await Promise.all(
+    desiredStates.map(({ serverId, enabled }) =>
+      enabled
+        ? mcpClient.connect({ directory: input.directory, name: serverId }).catch(() => undefined)
+        : mcpClient.disconnect({ directory: input.directory, name: serverId }).catch(() => undefined)
+    )
+  );
+}
+
+function getSafeAppSettings(): ReturnType<typeof getAppSettings> {
+  try {
+    return getAppSettings();
+  } catch {
+    return getDefaultAppSettings();
+  }
+}
+
 async function promptOpenCode<T>(input: {
   provider: string;
   model: string;
   variant?: string;
   system: string;
   prompt: string;
+  enableWebSearch?: boolean;
   schema?: z.ZodSchema<T>;
   retries?: number;
   onTextDelta?: (delta: string, snapshot: string) => Promise<void> | void;
@@ -109,6 +163,7 @@ async function promptOpenCode<T>(input: {
 
   const client = await getOpencodeClient();
   const directory = getOpencodeDirectory();
+  await syncOpenCodeRuntimeSettings({ client, directory });
   const created = await client.session.create({
     directory,
     title: `Ship Council - ${provider.label}`
@@ -206,6 +261,7 @@ async function promptOpenCode<T>(input: {
             retryCount: input.retries ?? 1
           }
         : undefined,
+      tools: input.enableWebSearch ? { websearch: true } : undefined,
       parts: [
         {
           type: "text",
@@ -250,6 +306,7 @@ export class OpenCodeCouncilProvider implements CouncilProvider {
     variant?: string;
     system: string;
     prompt: string;
+    enableWebSearch?: boolean;
     temperature?: number;
     onTextDelta?: (delta: string, snapshot: string) => Promise<void> | void;
     onReasoningDelta?: (delta: string, snapshot: string) => Promise<void> | void;
@@ -260,8 +317,11 @@ export class OpenCodeCouncilProvider implements CouncilProvider {
       provider: input.provider,
       model: input.model,
       variant: input.variant,
-      system: `${input.system}\nDo not use tools. Respond with plain text only.`,
+      system: input.enableWebSearch
+        ? `${input.system}\nUse web search only when it materially improves accuracy.`
+        : `${input.system}\nDo not use tools. Respond with plain text only.`,
       prompt: input.prompt,
+      enableWebSearch: input.enableWebSearch,
       onTextDelta: input.onTextDelta,
       onReasoningDelta: input.onReasoningDelta
     });
@@ -280,6 +340,7 @@ export class OpenCodeCouncilProvider implements CouncilProvider {
     system: string;
     prompt: string;
     schema: z.ZodSchema<T>;
+    enableWebSearch?: boolean;
     temperature?: number;
     retries?: number;
   }): Promise<{ data: T; raw: string; usage: ProviderUsage }> {
@@ -289,8 +350,11 @@ export class OpenCodeCouncilProvider implements CouncilProvider {
       provider: input.provider,
       model: input.model,
       variant: input.variant,
-      system: `${input.system}\nReturn exactly one structured JSON object.`,
+      system: input.enableWebSearch
+        ? `${input.system}\nUse web search only when it materially improves accuracy. Return exactly one structured JSON object.`
+        : `${input.system}\nReturn exactly one structured JSON object.`,
       prompt: input.prompt,
+      enableWebSearch: input.enableWebSearch,
       schema: input.schema,
       retries: input.retries
     });
@@ -316,6 +380,7 @@ export class MockCouncilProvider implements CouncilProvider {
     variant?: string;
     system: string;
     prompt: string;
+    enableWebSearch?: boolean;
     temperature?: number;
     onTextDelta?: (delta: string, snapshot: string) => Promise<void> | void;
     onReasoningDelta?: (delta: string, snapshot: string) => Promise<void> | void;
@@ -324,6 +389,7 @@ export class MockCouncilProvider implements CouncilProvider {
     void input.model;
     void input.temperature;
     void input.variant;
+    void input.enableWebSearch;
 
     const roleLine = input.system.split(".")[0] ?? "Agent";
     const title = input.prompt.split("\n")[0]?.replace(/^#\s*/, "") || "Topic";
@@ -354,6 +420,7 @@ export class MockCouncilProvider implements CouncilProvider {
     system: string;
     prompt: string;
     schema: z.ZodSchema<T>;
+    enableWebSearch?: boolean;
     temperature?: number;
     retries?: number;
   }): Promise<{ data: T; raw: string; usage: ProviderUsage }> {
@@ -363,6 +430,7 @@ export class MockCouncilProvider implements CouncilProvider {
     void input.prompt;
     void input.temperature;
     void input.variant;
+    void input.enableWebSearch;
     void input.retries;
 
     const discussionMock = {

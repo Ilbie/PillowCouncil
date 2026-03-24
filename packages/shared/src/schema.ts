@@ -10,6 +10,7 @@ export const sessions = sqliteTable("sessions", {
   presetAgents: text("preset_agents"),
   provider: text("provider").notNull(),
   model: text("model").notNull(),
+  enableWebSearch: integer("enable_web_search", { mode: "boolean" }).notNull().default(false),
   thinkingIntensity: text("thinking_intensity").notNull().default("balanced"),
   debateIntensity: text("debate_intensity").notNull().default("2"),
   roundCount: integer("round_count").notNull(),
@@ -26,6 +27,8 @@ export const appSettings = sqliteTable("app_settings", {
   providerId: text("provider_id").notNull().default(""),
   modelId: text("model_id").notNull().default(""),
   authMode: text("auth_mode").notNull(),
+  enableMcp: integer("enable_mcp", { mode: "boolean" }).notNull().default(true),
+  enableSkills: integer("enable_skills", { mode: "boolean" }).notNull().default(true),
   updatedAt: text("updated_at").notNull()
 });
 
@@ -38,6 +41,7 @@ export const sessionRuns = sqliteTable("session_runs", {
   startedAt: text("started_at"),
   completedAt: text("completed_at"),
   errorMessage: text("error_message"),
+  debateState: text("debate_state").notNull().default('{"agreedPoints":[],"activeConflicts":[],"pendingQuestions":[]}'),
   totalPromptTokens: integer("total_prompt_tokens").notNull().default(0),
   totalCompletionTokens: integer("total_completion_tokens").notNull().default(0),
   createdAt: text("created_at").notNull(),
@@ -64,6 +68,7 @@ export const messages = sqliteTable("messages", {
   agentName: text("agent_name").notNull(),
   role: text("role").notNull(),
   kind: text("kind").notNull(),
+  targetAgentKey: text("target_agent_key"),
   content: text("content").notNull(),
   createdAt: text("created_at").notNull()
 });

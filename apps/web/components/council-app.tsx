@@ -2,35 +2,25 @@
 
 import {
   Activity,
-  Settings,
-  X,
-  AlertOctagon,
-  AlertTriangle,
-  Briefcase,
   CheckCircle2,
+  Settings,
+  Settings2,
+  X,
   ChevronDown,
   Cpu,
-  Download,
-  Hexagon,
-  Info,
   Lightbulb,
   LoaderCircle,
   LogIn,
-  RefreshCcw,
-  Save,
-  Shield,
+  Lock,
   ShieldAlert,
+  Sparkles,
   Users,
-  Wifi,
-  Zap
 } from "lucide-react";
 import type { ChangeEvent } from "react";
 import { startTransition, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   GENERATED_PRESET_AGENT_COUNT_DEFAULT,
-  GENERATED_PRESET_AGENT_COUNT_MAX,
-  GENERATED_PRESET_AGENT_COUNT_MIN
 } from "@ship-council/agents";
 import type { ProviderConnectionState } from "@ship-council/providers";
 
@@ -41,7 +31,6 @@ import type {
   PresetDefinition,
   ProviderOption,
   RunStreamEvent,
-  SessionCreateInput,
   SessionDetailResponse,
   SessionLanguage,
   SessionSummary,
@@ -51,11 +40,17 @@ import type {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MarkdownContent } from "@/components/ui/markdown-content";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { CouncilHeader } from "@/components/council/CouncilHeader";
+import { CreateSessionModal } from "@/components/council/CreateSessionModal";
+import { DecisionSidebar } from "@/components/council/DecisionSidebar";
+import { LiveWorkspacePanel } from "@/components/council/LiveWorkspacePanel";
+import { SettingsModal } from "@/components/council/SettingsModal";
+import { SessionSidebar } from "@/components/council/SessionSidebar";
 import {
   type UiLocale,
-  UI_LOCALE_OPTIONS,
   UI_LOCALE_STORAGE_KEY,
   formatUiTimestamp,
   getDebateIntensityDescription,
@@ -63,7 +58,6 @@ import {
   getMessageKindLabel,
   getPreferredUiLocale,
   getRoundStageLabel,
-  getStatusLabel,
   getUiCopy,
   getUiLanguageLabel,
   isUiLocale
@@ -71,9 +65,45 @@ import {
 import {
   beginProviderOauthFlow,
   pickPreferredAuthModeId,
-  type ProviderOauthPendingState,
   waitForOauthAutoCompletion
 } from "@/lib/provider-auth";
+import {
+  clampAgentCount,
+  clampDebateIntensity,
+  filterLiveMessagesForSessionRun,
+  isMatchingSessionRunEvent,
+  getThinkingIntensityDescription,
+  getThinkingIntensityLabel,
+  isSameConnection,
+  readJson,
+  reconcileConnection,
+  removeLiveMessagesForSession,
+  type ConnectionDraft
+} from "@/lib/council-app-helpers";
+import {
+  getCloseLabel,
+  getOpenPresetStudioLabel,
+  getPresetStudioShortcutDescription,
+  getReturnToSessionLabel,
+  getSessionModelHint,
+  getSessionModelLabel,
+  getSessionSectionDescription,
+  getStructuredOutputReadyLabel,
+  getThinkingFieldHint,
+  getThinkingFieldLabel
+} from "@/lib/council-app-labels";
+import { getAgentVisual } from "@/lib/council-agent-visuals";
+import type {
+  GeneratedPresetResponse,
+  GeneratedPresetInputs,
+  LiveMessageMap,
+  McpSettingsDraft,
+  PendingOauthState,
+  RunRouteResponse,
+  SessionFormState,
+  SettingsTab,
+  SkillsSettingsDraft
+} from "@/lib/council-app-types";
 import { buildDebateVisualization } from "@/lib/council-visualization";
 import { cn } from "@/lib/utils";
 
@@ -88,506 +118,13 @@ type CouncilAppProps = {
   defaultAuthMode: string;
 };
 
-type ConnectionDraft = {
-  providerId: string;
-  authMode: string;
-  apiKey: string;
-};
-type SessionFormState = Pick<
-  SessionCreateInput,
-  "title" | "prompt" | "presetId" | "model" | "thinkingIntensity" | "debateIntensity" | "language"
->;
-
-type GeneratedPresetResponse = {
-  preset: PresetDefinition;
-};
-
-type PendingOauthState = ProviderOauthPendingState;
-
-type RunRouteResponse = {
-  runId: string;
-  run: {
-    status: string;
-    errorMessage: string | null;
-  };
-};
-
-type LiveMessageMap = Record<string, LiveMessageRecord>;
-
-export function filterLiveMessagesForSessionRun(messages: LiveMessageMap, sessionId: string, runId: string | null): LiveMessageMap {
-  return Object.fromEntries(
-    Object.entries(messages).filter(([, message]) => message.sessionId !== sessionId || (runId !== null && message.runId === runId))
-  );
-}
-
-export function removeLiveMessagesForSession(messages: LiveMessageMap, sessionId: string): LiveMessageMap {
-  return Object.fromEntries(Object.entries(messages).filter(([, message]) => message.sessionId !== sessionId));
-}
-
 const POLL_INTERVAL_MS = 1_500;
 const RUN_STOPPED_BY_USER_MESSAGE = "Run stopped by user.";
 const SESSION_LANGUAGE_VALUES: SessionLanguage[] = ["ko", "en", "ja"];
 const DEBATE_INTENSITY_MIN = 1;
-const DEBATE_INTENSITY_MAX = 5;
+const DEBATE_INTENSITY_MAX = 20;
 const DEBATE_INTENSITY_DEFAULT = 2;
 const CUSTOM_PRESET_AGENT_COUNT_DEFAULT = GENERATED_PRESET_AGENT_COUNT_DEFAULT;
-
-const DYNAMIC_AGENT_VISUALS = [
-  { icon: Briefcase, color: "text-sky-300", bg: "bg-sky-500/10", border: "border-sky-500/20" },
-  { icon: Cpu, color: "text-violet-300", bg: "bg-violet-500/10", border: "border-violet-500/20" },
-  { icon: Lightbulb, color: "text-amber-300", bg: "bg-amber-500/10", border: "border-amber-500/20" },
-  { icon: Shield, color: "text-emerald-300", bg: "bg-emerald-500/10", border: "border-emerald-500/20" },
-  { icon: Users, color: "text-rose-300", bg: "bg-rose-500/10", border: "border-rose-500/20" },
-  { icon: Zap, color: "text-cyan-300", bg: "bg-cyan-500/10", border: "border-cyan-500/20" }
-] as const;
-
-const AGENT_VISUALS = {
-  founder: { icon: Briefcase, color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/20" },
-  user: { icon: Users, color: "text-green-400", bg: "bg-green-500/10", border: "border-green-500/20" },
-  "staff-engineer": { icon: Cpu, color: "text-purple-400", bg: "bg-purple-500/10", border: "border-purple-500/20" },
-  growth: { icon: Zap, color: "text-yellow-400", bg: "bg-yellow-500/10", border: "border-yellow-500/20" },
-  skeptic: { icon: AlertOctagon, color: "text-red-400", bg: "bg-red-500/10", border: "border-red-500/20" },
-  pm: { icon: Briefcase, color: "text-blue-400", bg: "bg-blue-500/10", border: "border-blue-500/20" },
-  engineer: { icon: Cpu, color: "text-violet-400", bg: "bg-violet-500/10", border: "border-violet-500/20" },
-  designer: { icon: Lightbulb, color: "text-pink-400", bg: "bg-pink-500/10", border: "border-pink-500/20" },
-  security: { icon: Shield, color: "text-emerald-400", bg: "bg-emerald-500/10", border: "border-emerald-500/20" },
-  performance: { icon: Activity, color: "text-cyan-400", bg: "bg-cyan-500/10", border: "border-cyan-500/20" },
-  maintainer: { icon: ShieldAlert, color: "text-orange-400", bg: "bg-orange-500/10", border: "border-orange-500/20" }
-} as const;
-
-function getKeywordVisual(role: string) {
-  const normalized = role.toLowerCase();
-
-  if (normalized.includes("security") || normalized.includes("보안")) {
-    return AGENT_VISUALS.security;
-  }
-  if (normalized.includes("design") || normalized.includes("ux") || normalized.includes("디자인")) {
-    return AGENT_VISUALS.designer;
-  }
-  if (normalized.includes("engineer") || normalized.includes("개발") || normalized.includes("아키텍처")) {
-    return AGENT_VISUALS["staff-engineer"];
-  }
-  if (normalized.includes("growth") || normalized.includes("marketing") || normalized.includes("마케팅")) {
-    return AGENT_VISUALS.growth;
-  }
-  if (normalized.includes("skeptic") || normalized.includes("review") || normalized.includes("회의") || normalized.includes("risk")) {
-    return AGENT_VISUALS.skeptic;
-  }
-  if (normalized.includes("user") || normalized.includes("customer") || normalized.includes("고객") || normalized.includes("사용자")) {
-    return AGENT_VISUALS.user;
-  }
-  if (normalized.includes("product") || normalized.includes("pm") || normalized.includes("전략")) {
-    return AGENT_VISUALS.pm;
-  }
-
-  return null;
-}
-
-function getAgentVisual(agentKey: string, role?: string) {
-  const fromKey = AGENT_VISUALS[agentKey as keyof typeof AGENT_VISUALS];
-  if (fromKey) {
-    return fromKey;
-  }
-
-  const fromRole = role ? getKeywordVisual(role) : null;
-  if (fromRole) {
-    return fromRole;
-  }
-
-  const hash = [...`${agentKey}:${role ?? ""}`].reduce((total, char) => total + char.charCodeAt(0), 0);
-  return DYNAMIC_AGENT_VISUALS[hash % DYNAMIC_AGENT_VISUALS.length];
-}
-
-function clampDebateIntensity(value: number): number {
-  if (!Number.isFinite(value)) {
-    return DEBATE_INTENSITY_DEFAULT;
-  }
-
-  return Math.min(DEBATE_INTENSITY_MAX, Math.max(DEBATE_INTENSITY_MIN, Math.trunc(value)));
-}
-
-function isSameConnection(left: ConnectionDraft, right: ConnectionDraft): boolean {
-  return left.providerId === right.providerId && left.authMode === right.authMode;
-}
-
-function reconcileConnection(
-  catalog: ProviderOption[],
-  current: ConnectionDraft,
-  fallback: { providerId: string; authMode: string }
-): ConnectionDraft {
-  const provider =
-    catalog.find((item) => item.id === current.providerId) ??
-    catalog.find((item) => item.id === fallback.providerId) ??
-    catalog[0];
-  const authMode =
-    provider?.authModes.find((item) => item.id === current.authMode)?.id ??
-    provider?.authModes.find((item) => item.id === fallback.authMode)?.id ??
-    (provider ? pickPreferredAuthModeId(provider.authModes, current.authMode) : "") ??
-    "";
-
-  return {
-    ...current,
-    providerId: provider?.id ?? "",
-    authMode
-  };
-}
-
-function getSessionSectionDescription(locale: UiLocale): string {
-  switch (locale) {
-    case "ko":
-      return "주제, 프리셋, 모델, 언어, 토론 반복 횟수, 생각 강도를 정한 뒤 바로 실행합니다.";
-    case "ja":
-      return "テーマ、プリセット、モデル、言語、討論回数、思考強度を設定してすぐ実行します。";
-    default:
-      return "Set the topic, preset, model, language, debate cycles, and thinking intensity, then run immediately.";
-  }
-}
-
-function getConnectionSectionDescription(locale: UiLocale): string {
-  switch (locale) {
-    case "ko":
-      return "OpenCode에서 공급사와 로그인 방식만 관리합니다. 모델은 새 세션에서 고릅니다.";
-    case "ja":
-      return "OpenCode ではプロバイダーとログイン方法だけを管理します。モデルは新しいセッションで選択します。";
-    default:
-      return "OpenCode manages the provider and login method only. Pick the model inside each new session.";
-  }
-}
-
-function getDecisionSectionDescription(locale: UiLocale): string {
-  switch (locale) {
-    case "ko":
-      return "최종 결론과 핵심 리스크만 남깁니다.";
-    case "ja":
-      return "最終結論と主要リスクだけを表示します。";
-    default:
-      return "Keep only the final decision and the key risks.";
-  }
-}
-
-function getSessionModelLabel(locale: UiLocale): string {
-  switch (locale) {
-    case "ko":
-      return "세션 모델";
-    case "ja":
-      return "セッションモデル";
-    default:
-      return "Session model";
-  }
-}
-
-function getSessionModelHint(locale: UiLocale): string {
-  switch (locale) {
-    case "ko":
-      return "저장된 공급사 기준으로 이번 세션에서 사용할 모델을 고릅니다.";
-    case "ja":
-      return "保存したプロバイダーの中から今回のセッションで使うモデルを選びます。";
-    default:
-      return "Choose which model to use for this session under the saved provider.";
-  }
-}
-
-function getThinkingIntensityLabel(value: ThinkingIntensity, locale: UiLocale): string {
-  const normalized = value.trim().toLowerCase();
-
-  switch (locale) {
-    case "ko":
-      return normalized === "low"
-        ? "낮음"
-        : normalized === "medium"
-          ? "중간"
-          : normalized === "deep" || normalized === "high"
-            ? "깊게"
-            : normalized === "balanced" || normalized === "default"
-              ? "균형"
-              : value;
-    case "ja":
-      return normalized === "low"
-        ? "低め"
-        : normalized === "medium"
-          ? "中間"
-          : normalized === "deep" || normalized === "high"
-            ? "深め"
-            : normalized === "balanced" || normalized === "default"
-              ? "バランス"
-              : value;
-    default:
-      return normalized === "low"
-        ? "Low"
-        : normalized === "medium"
-          ? "Medium"
-          : normalized === "deep" || normalized === "high"
-            ? "High"
-            : normalized === "balanced" || normalized === "default"
-              ? "Balanced"
-              : value
-                  .split(/[-_/ ]+/)
-                  .filter(Boolean)
-                  .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-                  .join(" ");
-  }
-}
-
-function getThinkingIntensityDescription(value: ThinkingIntensity, locale: UiLocale): string {
-  const normalized = value.trim().toLowerCase();
-
-  switch (locale) {
-    case "ko":
-      return normalized === "low"
-        ? "짧고 빠르게 결론에 접근합니다."
-        : normalized === "deep" || normalized === "high"
-          ? "가정과 트레이드오프를 더 깊게 검토합니다."
-          : normalized === "medium"
-            ? "속도와 깊이 사이에서 조금 더 신중하게 검토합니다."
-          : "속도와 깊이를 균형 있게 맞춥니다.";
-    case "ja":
-      return normalized === "low"
-        ? "短く素早く結論に寄せます。"
-        : normalized === "deep" || normalized === "high"
-          ? "前提とトレードオフをより深く検討します。"
-          : normalized === "medium"
-            ? "速度と深さのあいだで少し慎重に検討します。"
-          : "速度と深さのバランスを取ります。";
-    default:
-      return normalized === "low"
-        ? "Keep the reasoning short and converge quickly."
-        : normalized === "deep" || normalized === "high"
-          ? "Push deeper on assumptions and tradeoffs."
-          : normalized === "medium"
-            ? "Add a bit more deliberate reasoning before deciding."
-          : "Balance speed with reasoning depth.";
-  }
-}
-
-function getThinkingFieldLabel(locale: UiLocale): string {
-  switch (locale) {
-    case "ko":
-      return "생각 강도";
-    case "ja":
-      return "思考強度";
-    default:
-      return "Thinking intensity";
-  }
-}
-
-function getThinkingFieldHint(locale: UiLocale): string {
-  switch (locale) {
-    case "ko":
-      return "한 번의 발언에서 얼마나 깊게 검토할지 정합니다.";
-    case "ja":
-      return "各発言でどれだけ深く考えるかを決めます。";
-    default:
-      return "Controls how deeply each response should reason before answering.";
-  }
-}
-
-function getRiskSectionLabel(locale: UiLocale): string {
-  switch (locale) {
-    case "ko":
-      return "리스크";
-    case "ja":
-      return "リスク";
-    default:
-      return "Risks";
-  }
-}
-
-function getLiveWorkspaceLabel(locale: UiLocale): string {
-  switch (locale) {
-    case "ko":
-      return "라이브 워룸";
-    case "ja":
-      return "ライブ討論ルーム";
-    default:
-      return "Live War Room";
-  }
-}
-
-function getLiveWorkspaceDescription(locale: UiLocale, isRunning: boolean): string {
-  switch (locale) {
-    case "ko":
-      return isRunning
-        ? "라운드가 생기기 전에도 현재 단계, 최근 발언, 패널 진행도를 실시간으로 추적합니다."
-        : "선택한 세션의 토론 진행도와 패널 활동을 한눈에 확인합니다.";
-    case "ja":
-      return isRunning
-        ? "ラウンドが作成される前でも、現在の段階、最新発言、パネル進行度を追跡します。"
-        : "選択したセッションの討論進行とパネル活動をひと目で確認します。";
-    default:
-      return isRunning
-        ? "Track the current stage, latest update, and panel momentum even before the first round lands."
-        : "See the debate progress and panel activity for the selected session at a glance.";
-  }
-}
-
-function getScrumBoardLabel(locale: UiLocale): string {
-  switch (locale) {
-    case "ko":
-      return "스크럼 단계";
-    case "ja":
-      return "スクラム段階";
-    default:
-      return "Scrum Stages";
-  }
-}
-
-function getActivityFeedLabel(locale: UiLocale): string {
-  switch (locale) {
-    case "ko":
-      return "실시간 피드";
-    case "ja":
-      return "ライブフィード";
-    default:
-      return "Live Feed";
-  }
-}
-
-function getAgentBoardLabel(locale: UiLocale): string {
-  switch (locale) {
-    case "ko":
-      return "패널 활동";
-    case "ja":
-      return "パネル活動";
-    default:
-      return "Panel Activity";
-  }
-}
-
-function getProgressMetricLabel(metric: "expected" | "completed" | "stage" | "speaker", locale: UiLocale): string {
-  switch (metric) {
-    case "expected":
-      switch (locale) {
-        case "ko":
-          return "예정 라운드";
-        case "ja":
-          return "予定ラウンド";
-        default:
-          return "Planned Rounds";
-      }
-    case "completed":
-      switch (locale) {
-        case "ko":
-          return "완료 라운드";
-        case "ja":
-          return "完了ラウンド";
-        default:
-          return "Completed";
-      }
-    case "stage":
-      switch (locale) {
-        case "ko":
-          return "현재 단계";
-        case "ja":
-          return "現在の段階";
-        default:
-          return "Current Stage";
-      }
-    default:
-      switch (locale) {
-        case "ko":
-          return "최근 발언";
-        case "ja":
-          return "最新発言";
-        default:
-          return "Latest Speaker";
-      }
-  }
-}
-
-function getStageStatusLabel(status: "pending" | "active" | "completed", locale: UiLocale): string {
-  switch (locale) {
-    case "ko":
-      return status === "active" ? "진행 중" : status === "completed" ? "완료" : "대기";
-    case "ja":
-      return status === "active" ? "進行中" : status === "completed" ? "完了" : "待機";
-    default:
-      return status === "active" ? "Active" : status === "completed" ? "Done" : "Pending";
-  }
-}
-
-function getAgentStatusLabel(status: "queued" | "active" | "done", locale: UiLocale): string {
-  switch (locale) {
-    case "ko":
-      return status === "active" ? "발언 차례" : status === "done" ? "발언 완료" : "대기";
-    case "ja":
-      return status === "active" ? "発言中" : status === "done" ? "完了" : "待機";
-    default:
-      return status === "active" ? "Speaking" : status === "done" ? "Done" : "Queued";
-  }
-}
-
-function getSpeakerProgressLabel(current: number, total: number, locale: UiLocale): string {
-  switch (locale) {
-    case "ko":
-      return `${current}/${total}명 발언`;
-    case "ja":
-      return `${current}/${total}人が発言`;
-    default:
-      return `${current}/${total} speakers`;
-  }
-}
-
-function getContributionLabel(count: number, locale: UiLocale): string {
-  switch (locale) {
-    case "ko":
-      return `${count}개 메시지`;
-    case "ja":
-      return `${count}件の発言`;
-    default:
-      return `${count} messages`;
-  }
-}
-
-function getWaitingFeedLabel(locale: UiLocale, stage: string | null): string {
-  const stageLabel = stage ? getRoundStageLabel(stage, locale) : null;
-
-  switch (locale) {
-    case "ko":
-      return stageLabel ? `${stageLabel} 단계 응답을 기다리는 중입니다.` : "첫 응답을 기다리는 중입니다.";
-    case "ja":
-      return stageLabel ? `${stageLabel} 段階の応答を待っています。` : "最初の応答を待っています。";
-    default:
-      return stageLabel ? `Waiting for ${stageLabel} responses.` : "Waiting for the first response.";
-  }
-}
-
-function clampAgentCount(value: number): number {
-  if (!Number.isFinite(value)) {
-    return CUSTOM_PRESET_AGENT_COUNT_DEFAULT;
-  }
-
-  return Math.min(GENERATED_PRESET_AGENT_COUNT_MAX, Math.max(GENERATED_PRESET_AGENT_COUNT_MIN, Math.trunc(value)));
-}
-
-function getDisplayRunStatusLabel(input: {
-  status: string;
-  errorMessage?: string | null;
-  locale: UiLocale;
-}): string {
-  if (input.errorMessage === RUN_STOPPED_BY_USER_MESSAGE) {
-    return getStatusLabel("stopped", input.locale);
-  }
-
-  return getStatusLabel(input.status, input.locale);
-}
-
-async function readJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
-  const response = await fetch(input, {
-    cache: "no-store",
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {})
-    }
-  });
-
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: "Request failed" }));
-    throw new Error(error.error ?? "Request failed");
-  }
-
-  return response.json() as Promise<T>;
-}
 
 export function CouncilApp({
   initialPresets,
@@ -611,20 +148,39 @@ export function CouncilApp({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isRefreshingModels, setIsRefreshingModels] = useState(false);
   const [isSavingConnection, setIsSavingConnection] = useState(false);
+  const [isSavingMcpSettings, setIsSavingMcpSettings] = useState(false);
+  const [isSavingSkillsSettings, setIsSavingSkillsSettings] = useState(false);
   const [isStoppingRun, setIsStoppingRun] = useState(false);
   const [savedSettings, setSavedSettings] = useState<AppSettings>(initialSettings);
+  const [mcpSettings, setMcpSettings] = useState<McpSettingsDraft>({
+    enabled: initialSettings.enableMcp,
+    servers: []
+  });
+  const [skillsSettings, setSkillsSettings] = useState<SkillsSettingsDraft>({
+    enabled: initialSettings.enableSkills,
+    managed: [],
+    available: []
+  });
   const [savedConnectionState, setSavedConnectionState] = useState<ProviderConnectionState>(initialConnection);
   const [draftConnectionState, setDraftConnectionState] = useState<ProviderConnectionState>(initialConnection);
   const [activeRunSessionId, setActiveRunSessionId] = useState<string | null>(
     initialSessions.find((entry) => entry.run?.status === "running")?.session.id ?? null
   );
+  const [activeStreamRunId, setActiveStreamRunId] = useState<string | null>(
+    initialSessions.find((entry) => entry.run?.status === "running")?.run?.id ?? null
+  );
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("connection");
   const [isCreateSessionOpen, setIsCreateSessionOpen] = useState(false);
+  const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
+  const [selectedAgentKey, setSelectedAgentKey] = useState<string | null>(null);
   const [pendingOauth, setPendingOauth] = useState<PendingOauthState | null>(null);
   const [isGeneratingPreset, setIsGeneratingPreset] = useState(false);
   const [generatedPresetPrompt, setGeneratedPresetPrompt] = useState("");
   const [generatedPresetAgentCount, setGeneratedPresetAgentCount] = useState(CUSTOM_PRESET_AGENT_COUNT_DEFAULT);
   const [generatedPreset, setGeneratedPreset] = useState<PresetDefinition | null>(null);
+  const [generatedPresetSource, setGeneratedPresetSource] = useState<GeneratedPresetInputs | null>(null);
+  const [shouldReturnToSession, setShouldReturnToSession] = useState(false);
   const [connectionDraft, setConnectionDraft] = useState<ConnectionDraft>({
     providerId: initialSettings.providerId,
     authMode: initialSettings.authMode,
@@ -635,6 +191,7 @@ export function CouncilApp({
     prompt: "",
     presetId: initialPresets[0]?.id ?? "saas-founder",
     model: initialSettings.modelId || defaultModel,
+    enableWebSearch: false,
     thinkingIntensity: "balanced",
     debateIntensity: DEBATE_INTENSITY_DEFAULT,
     language: "ko"
@@ -730,6 +287,19 @@ export function CouncilApp({
     () => selectedThinkingOption?.description ?? getThinkingIntensityDescription(form.thinkingIntensity, uiLocale),
     [form.thinkingIntensity, selectedThinkingOption, uiLocale]
   );
+  const isSettingsConnectionSaved = savedConnectionState.connected && !isConnectionDirty;
+  const isPresetTabLocked = !isSettingsConnectionSaved;
+  const selectedSessionSummary = useMemo(() => sessions.find((entry) => entry.session.id === selectedId) ?? null, [selectedId, sessions]);
+  const selectedRunId = detail?.run?.id ?? selectedSessionSummary?.run?.id ?? null;
+  const streamRunId = activeStreamRunId ?? selectedRunId;
+  const isPresetGenerationSuccess = Boolean(
+    generatedPresetSource &&
+    generatedPreset &&
+    generatedPresetSource.prompt === generatedPresetPrompt &&
+    generatedPresetSource.agentCount === generatedPresetAgentCount &&
+    generatedPresetSource.language === form.language &&
+    generatedPresetSource.model === form.model
+  );
   const isSelectedSessionRunning = Boolean(
     selectedId && (activeRunSessionId === selectedId || detail?.run?.status === "running")
   );
@@ -773,6 +343,10 @@ export function CouncilApp({
       }
       return current;
     });
+
+    if (selectedId === sessionId) {
+      setActiveStreamRunId(payload.run?.status === "running" ? payload.run.id : null);
+    }
     return payload;
   };
 
@@ -780,6 +354,7 @@ export function CouncilApp({
     const [, payload] = await Promise.all([refreshSessions(), refreshDetail(sessionId)]);
     if (payload.run && payload.run.status !== "running") {
       setActiveRunSessionId((current) => (current === sessionId ? null : current));
+      setActiveStreamRunId(null);
       if (
         payload.run?.status === "failed" &&
         payload.run.errorMessage &&
@@ -787,7 +362,13 @@ export function CouncilApp({
       ) {
         setError(payload.run.errorMessage);
       }
+      return payload;
     }
+
+    if (payload.run?.status === "running") {
+      setActiveStreamRunId(payload.run.id);
+    }
+
     return payload;
   };
 
@@ -828,6 +409,7 @@ export function CouncilApp({
 
   const launchRun = (sessionId: string) => {
     setActiveRunSessionId(sessionId);
+    setActiveStreamRunId(null);
     setLiveMessages((current) => removeLiveMessagesForSession(current, sessionId));
 
     void readJson<RunRouteResponse>(`/api/sessions/${sessionId}/run`, {
@@ -835,6 +417,7 @@ export function CouncilApp({
     })
       .then(async (runResponse) => {
         await syncSessionState(sessionId);
+        setActiveStreamRunId(runResponse.runId);
         if (
           runResponse.run.status === "failed" &&
           runResponse.run.errorMessage &&
@@ -853,6 +436,7 @@ export function CouncilApp({
           }
         } catch {
           setActiveRunSessionId((current) => (current === sessionId ? null : current));
+          setActiveStreamRunId(null);
         }
       });
   };
@@ -936,6 +520,17 @@ export function CouncilApp({
   }, [form.thinkingIntensity, thinkingOptions]);
 
   useEffect(() => {
+    if (!form.enableWebSearch || sessionModel?.supportsWebSearch) {
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      enableWebSearch: false
+    }));
+  }, [form.enableWebSearch, sessionModel?.supportsWebSearch]);
+
+  useEffect(() => {
     startTransition(() => {
       refreshProviderCatalog().catch((requestError) => {
         setError(requestError instanceof Error ? requestError.message : copy.errorFallback);
@@ -986,7 +581,7 @@ export function CouncilApp({
     const handleStreamEvent = (streamEvent: MessageEvent<string>) => {
       const payload = JSON.parse(streamEvent.data) as RunStreamEvent;
 
-      if (detail?.run?.id && payload.runId !== detail.run.id && payload.type !== "run-complete" && payload.type !== "run-error") {
+      if (!isMatchingSessionRunEvent(payload, selectedId, streamRunId)) {
         return;
       }
 
@@ -1001,6 +596,7 @@ export function CouncilApp({
           agentName: payload.agentName,
           role: payload.role,
           kind: payload.kind,
+          targetAgentKey: payload.targetAgentKey ?? current?.targetAgentKey ?? null,
           content: payload.snapshot,
           reasoning: current?.reasoning ?? "",
           createdAt: payload.createdAt,
@@ -1020,6 +616,7 @@ export function CouncilApp({
           agentName: payload.agentName,
           role: payload.role,
           kind: payload.kind,
+          targetAgentKey: payload.targetAgentKey ?? current?.targetAgentKey ?? null,
           content: current?.content ?? "",
           reasoning: payload.snapshot,
           createdAt: payload.createdAt,
@@ -1039,6 +636,7 @@ export function CouncilApp({
           agentName: payload.agentName,
           role: payload.role,
           kind: payload.kind,
+          targetAgentKey: payload.targetAgentKey ?? null,
           content: payload.content,
           reasoning: payload.reasoning,
           createdAt: payload.createdAt,
@@ -1066,7 +664,7 @@ export function CouncilApp({
     return () => {
       eventSource.close();
     };
-  }, [selectedId, isSelectedSessionRunning, detail?.run?.id]);
+  }, [selectedId, isSelectedSessionRunning, detail?.run?.id, streamRunId]);
 
   useEffect(() => {
     if (!selectedId || (!isSelectedSessionRunning && detail?.run?.status !== "running")) {
@@ -1131,6 +729,72 @@ export function CouncilApp({
       setError(requestError instanceof Error ? requestError.message : copy.errorFallback);
     } finally {
       setIsSavingConnection(false);
+    }
+  };
+
+  const loadMcpSettings = async () => {
+    const response = await readJson<McpSettingsDraft>("/api/settings/mcp");
+    setMcpSettings(response);
+    return response;
+  };
+
+  const loadSkillsSettings = async () => {
+    const response = await readJson<SkillsSettingsDraft>("/api/settings/skills");
+    setSkillsSettings(response);
+    return response;
+  };
+
+  useEffect(() => {
+    if (!isSettingsOpen) {
+      return;
+    }
+
+    void Promise.all([loadMcpSettings(), loadSkillsSettings()]).catch((requestError) => {
+      setError(requestError instanceof Error ? requestError.message : copy.errorFallback);
+    });
+  }, [isSettingsOpen]);
+
+  const handleSaveMcpSettings = async () => {
+    setError(null);
+    setIsSavingMcpSettings(true);
+
+    try {
+      const response = await readJson<McpSettingsDraft>("/api/settings/mcp", {
+        method: "POST",
+        body: JSON.stringify(mcpSettings)
+      });
+      setMcpSettings(response);
+      setSavedSettings((current) => ({ ...current, enableMcp: response.enabled }));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : copy.errorFallback);
+    } finally {
+      setIsSavingMcpSettings(false);
+    }
+  };
+
+  const handleSaveSkillsSettings = async () => {
+    setError(null);
+    setIsSavingSkillsSettings(true);
+
+    try {
+      const response = await readJson<SkillsSettingsDraft>("/api/settings/skills", {
+        method: "POST",
+        body: JSON.stringify({
+          enabled: skillsSettings.enabled,
+          managed: skillsSettings.managed.map((skill) => ({
+            name: skill.name,
+            description: skill.description,
+            content: skill.content,
+            enabled: skill.enabled
+          }))
+        })
+      });
+      setSkillsSettings(response);
+      setSavedSettings((current) => ({ ...current, enableSkills: response.enabled }));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : copy.errorFallback);
+    } finally {
+      setIsSavingSkillsSettings(false);
     }
   };
 
@@ -1289,12 +953,43 @@ export function CouncilApp({
       });
 
       setGeneratedPreset(response.preset);
+      setGeneratedPresetSource({
+        prompt: generatedPresetPrompt,
+        agentCount: generatedPresetAgentCount,
+        language: form.language,
+        model: form.model
+      });
       setForm((current) => ({ ...current, presetId: response.preset.id }));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : copy.errorFallback);
     } finally {
       setIsGeneratingPreset(false);
     }
+  };
+
+  const handleOpenPresetStudio = () => {
+    setShouldReturnToSession(true);
+    setIsCreateSessionOpen(false);
+    setIsSettingsOpen(true);
+    setSettingsTab("preset");
+  };
+
+  const handleOpenSettings = () => {
+    setShouldReturnToSession(false);
+    setIsSettingsOpen(true);
+    setSettingsTab("connection");
+  };
+
+  const handleCloseSettings = () => {
+    setShouldReturnToSession(false);
+    setIsSettingsOpen(false);
+    setSettingsTab("connection");
+  };
+
+  const handleReturnToSession = () => {
+    setShouldReturnToSession(false);
+    setIsSettingsOpen(false);
+    setIsCreateSessionOpen(true);
   };
 
   const handleCreate = async () => {
@@ -1333,6 +1028,7 @@ export function CouncilApp({
         presetId: initialPresets[0]?.id ?? "saas-founder"
       }));
       setGeneratedPreset(null);
+      setGeneratedPresetSource(null);
       setGeneratedPresetPrompt("");
       setGeneratedPresetAgentCount(CUSTOM_PRESET_AGENT_COUNT_DEFAULT);
     } catch (requestError) {
@@ -1372,6 +1068,7 @@ export function CouncilApp({
         method: "DELETE"
       });
       setActiveRunSessionId((current) => (current === selectedId ? null : current));
+      setActiveStreamRunId(null);
       await syncSessionState(selectedId).catch(() => undefined);
       setError(null);
     } catch (requestError) {
@@ -1381,11 +1078,6 @@ export function CouncilApp({
     }
   };
 
-  const selectedSessionSummary = useMemo(
-    () => sessions.find((entry) => entry.session.id === selectedId) ?? null,
-    [selectedId, sessions]
-  );
-  const selectedRunId = detail?.run?.id ?? selectedSessionSummary?.run?.id ?? null;
   const activePreset = useMemo(
     () =>
       detail?.session.customPreset ??
@@ -1415,6 +1107,25 @@ export function CouncilApp({
       presetId: initialPresets[0]?.id ?? "saas-founder"
     }));
   }, [availablePresets, form.presetId, generatedPreset, initialPresets]);
+
+  useEffect(() => {
+    if (!generatedPreset || !generatedPresetSource) {
+      return;
+    }
+
+    const isStale =
+      generatedPresetSource.prompt !== generatedPresetPrompt ||
+      generatedPresetSource.agentCount !== generatedPresetAgentCount ||
+      generatedPresetSource.language !== form.language ||
+      generatedPresetSource.model !== form.model;
+
+    if (!isStale) {
+      return;
+    }
+
+    setGeneratedPreset(null);
+    setGeneratedPresetSource(null);
+  }, [form.language, form.model, generatedPreset, generatedPresetAgentCount, generatedPresetPrompt, generatedPresetSource]);
   const timelineTitle = detail?.session.title ?? selectedSessionSummary?.session.title ?? copy.detail.emptyTitle;
   const timelinePrompt = detail?.session.prompt ?? selectedSessionSummary?.session.prompt ?? copy.detail.emptyDescription;
   const debateVisualization = useMemo(
@@ -1435,17 +1146,41 @@ export function CouncilApp({
     () => debateVisualization?.activityFeed.find((entry) => entry.type === "message") ?? null,
     [debateVisualization]
   );
-  const liveTimelineMessage =
-    isSelectedSessionRunning && debateVisualization
-      ? getWaitingFeedLabel(uiLocale, debateVisualization.summary.activeStage)
-      : null;
+  const detailedMessageInfo = useMemo(() => {
+    if (!selectedMessageId || !debateVisualization) return null;
+    for (const round of debateVisualization.timeline) {
+      const msg = round.messages.find(m => m.id === selectedMessageId);
+      if (msg) {
+        return { round, message: msg };
+      }
+    }
+    return null;
+  }, [selectedMessageId, debateVisualization]);
+
+  const selectedAgentMessages = useMemo(() => {
+    if (!selectedAgentKey || !debateVisualization) return [];
+    const msgs = [];
+    for (const round of debateVisualization.timeline) {
+      for (const msg of round.messages) {
+        if (msg.agentKey === selectedAgentKey) {
+          msgs.push({ round, message: msg });
+        }
+      }
+    }
+    return msgs;
+  }, [selectedAgentKey, debateVisualization]);
+
+  const selectedAgentInfo = useMemo(() => {
+    if (!selectedAgentKey || !debateVisualization) return null;
+    return debateVisualization.agents.find(a => a.agentKey === selectedAgentKey) ?? null;
+  }, [selectedAgentKey, debateVisualization]);
 
   useEffect(() => {
     if (!isSelectedSessionRunning) {
       return;
     }
 
-    timelineEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    // scroll logic removed since timeline is hidden
   }, [
     isSelectedSessionRunning,
     detail?.rounds.length,
@@ -1453,1173 +1188,342 @@ export function CouncilApp({
   ]);
 
   return (
-    <div className="flex h-screen w-full flex-col overflow-hidden bg-[#060913] text-gray-100 font-sans selection:bg-blue-500/30">
-      <header className="flex h-16 shrink-0 items-center justify-between border-b border-gray-800 bg-[#090d1a] px-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 shadow-[0_4px_10px_rgba(37,99,235,0.35)]">
-            <Lightbulb className="text-white" size={16} />
+    <div className="relative flex h-screen w-full flex-col overflow-hidden bg-[#0b0f19] text-gray-100 selection:bg-blue-500/30">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(79,70,229,0.12),_transparent_48%),radial-gradient(circle_at_85%_10%,_rgba(244,104,73,0.1),_transparent_38%),linear-gradient(180deg,_rgba(255,255,255,0.03),_transparent_45%)]" />
+      <div className="relative z-10 flex h-screen flex-col">
+        <CouncilHeader
+          copy={copy}
+          uiLocale={uiLocale}
+          onOpenSettings={handleOpenSettings}
+          onUiLocaleChange={setUiLocale}
+        />
+
+        {error ? (
+          <div className="mt-4 flex items-start gap-3 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-100">
+            <ShieldAlert size={16} className="mt-0.5 shrink-0 text-red-300" />
+            <span>{error}</span>
           </div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-lg font-bold tracking-tight text-gray-100">Ship Council</h1>
-            <span className="flex h-5 items-center rounded-full border border-blue-500/20 bg-blue-500/10 px-2 text-[10px] font-bold text-blue-400">
-              MVP
-            </span>
-          </div>
-        </div>
+        ) : null}
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-400">{copy.uiLanguageLabel}</span>
-            <div className="relative w-28">
-              <Select
-                className="h-8 w-full appearance-none rounded-lg border-gray-700 bg-gray-800/90 pl-3 pr-8 text-xs text-gray-200"
-                value={uiLocale}
-                onChange={(event: ChangeEvent<HTMLSelectElement>) => setUiLocale(event.target.value as UiLocale)}
-              >
-                {UI_LOCALE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </Select>
-              <ChevronDown size={14} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-gray-500" />
-            </div>
-          </div>
-          <div className="h-5 w-px bg-gray-800" />
-          <Button variant="ghost" size="sm" className="h-8 rounded-lg border border-gray-700 bg-gray-800/80 px-3 text-xs text-gray-300 hover:bg-gray-700 hover:text-white" onClick={() => setIsSettingsOpen(true)}>
-            <Settings className="mr-1.5 h-3.5 w-3.5" />
-            {copy.connection.title}
-          </Button>
-        </div>
-      </header>
-
-      {error ? (
-        <div className="flex items-start gap-3 border-b border-red-500/30 bg-red-500/10 px-6 py-3 text-sm text-red-100">
-          <ShieldAlert size={16} className="mt-0.5 shrink-0 text-red-300" />
-          <span>{error}</span>
-        </div>
-      ) : null}
-
-      <main className="flex flex-1 min-h-0">
-        <aside className="council-scrollbar flex w-[340px] shrink-0 flex-col overflow-y-auto border-r border-gray-800 bg-[#090d1a]/50">
-          <div className="flex flex-col">
-            <div className="p-6 pb-2 border-b border-gray-800 bg-[#060913] sticky top-0 z-10 w-full mb-2">
-              <Button
-                className="w-full justify-start h-11 bg-blue-600 text-white hover:bg-blue-500 rounded-xl shadow-[0_8px_20px_rgba(37,99,235,0.2)]"
-                onClick={() => setIsCreateSessionOpen(true)}
-              >
-                <Lightbulb size={16} className="mr-2" />
-                {copy.session.title} (새로운 추가)
-              </Button>
-            </div>
-
-            <section className="px-6 py-6">
-              <div className="mb-4">
-                <h2 className="text-sm font-bold text-gray-200">{copy.sessions.title}</h2>
-                <p className="mt-1 text-xs leading-5 text-gray-500">{copy.sessions.description}</p>
-              </div>
-
-              <div className="space-y-3">
-                {sessions.length === 0 ? (
-                  <div className="rounded-[20px] border border-dashed border-gray-800 bg-gray-900/50 p-5 text-sm text-gray-500">
-                    {copy.sessions.empty}
-                  </div>
-                ) : null}
-                {sessions.map((entry) => {
-                  const sessionRunning =
-                    entry.session.id === activeRunSessionId ||
-                    entry.run?.status === "running" ||
-                    entry.session.status === "running";
-
-                  return (
-                    <button
-                      key={entry.session.id}
-                      type="button"
-                      onClick={() => setSelectedId(entry.session.id)}
-                      className={cn(
-                        "w-full rounded-[20px] border px-4 py-4 text-left transition",
-                        selectedId === entry.session.id
-                          ? "border-blue-500/30 bg-blue-500/10"
-                          : "border-gray-800 bg-gray-900/70 hover:bg-gray-800/80"
-                      )}
-                    >
-                      <div className="mb-2 flex items-start justify-between gap-3">
-                        <p className="line-clamp-1 text-sm font-semibold text-gray-100">{entry.session.title}</p>
-                        <Badge
-                          className={cn(
-                            "border px-2.5 py-1 text-[10px]",
-                            sessionRunning
-                              ? "border-blue-500/20 bg-blue-500/10 text-blue-300"
-                              : "border-gray-700 bg-gray-800 text-gray-400"
-                          )}
-                        >
-                          {sessionRunning ? (
-                            <span className="inline-flex items-center gap-1">
-                              <LoaderCircle className="h-3 w-3 animate-spin" />
-                              {getStatusLabel("running", uiLocale)}
-                            </span>
-                          ) : (
-                            getDisplayRunStatusLabel({
-                              status: entry.run?.status ?? entry.session.status,
-                              errorMessage: entry.run?.errorMessage,
-                              locale: uiLocale
-                            })
-                          )}
-                        </Badge>
-                      </div>
-                      <div className="mb-2 flex flex-wrap gap-2">
-                        <Badge className="border-gray-700 bg-gray-800/90 text-gray-300">{entry.session.provider}</Badge>
-                        <Badge className="border-gray-700 bg-gray-800/90 text-gray-300">{entry.session.model}</Badge>
-                        <Badge className="border-gray-700 bg-gray-800/90 text-gray-300">
-                          {getUiLanguageLabel(entry.session.language, uiLocale)}
-                        </Badge>
-                        <Badge className="border-gray-700 bg-gray-800/90 text-gray-300">
-                          {getDebateIntensityLabel(entry.session.debateIntensity, uiLocale)}
-                        </Badge>
-                        <Badge className="border-gray-700 bg-gray-800/90 text-gray-300">
-                          {getThinkingIntensityLabel(entry.session.thinkingIntensity, uiLocale)}
-                        </Badge>
-                      </div>
-                      <p className="line-clamp-2 text-xs leading-5 text-gray-500">{entry.session.prompt}</p>
-                    </button>
-                  );
-                })}
-              </div>
-            </section>
-          </div>
-        </aside>
-
-        <section className="flex min-w-0 flex-1 flex-col bg-[#060913] relative">
-          <div className="border-b border-gray-800 bg-gray-950/92 px-6 py-5 backdrop-blur">
-            <h2 className="truncate text-xl font-bold text-gray-100">{timelineTitle || copy.detail.emptyTitle}</h2>
-            <p className="mt-1 truncate text-sm text-gray-400">{timelinePrompt}</p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Badge className="border-gray-700 bg-gray-900 text-gray-300">
-                {detail?.session.provider ?? selectedSessionSummary?.session.provider ?? connectionProvider?.label ?? copy.noProvider}
-              </Badge>
-              <Badge className="border-gray-700 bg-gray-900 text-gray-300">
-                {detail?.session.model ?? selectedSessionSummary?.session.model ?? sessionModel?.label ?? copy.noModel}
-              </Badge>
-              {detail?.session || selectedSessionSummary ? (
-                <Badge className="border-gray-700 bg-gray-900 text-gray-300">
-                  {getUiLanguageLabel(
-                    (detail?.session.language ?? selectedSessionSummary?.session.language ?? "ko") as SessionLanguage,
-                    uiLocale
-                  )}
-                </Badge>
-              ) : null}
-              {detail?.session || selectedSessionSummary ? (
-                <Badge className="border-gray-700 bg-gray-900 text-gray-300">
-                  {getDebateIntensityLabel(
-                    (detail?.session.debateIntensity ??
-                      selectedSessionSummary?.session.debateIntensity ??
-                      DEBATE_INTENSITY_DEFAULT) as number,
-                    uiLocale
-                  )}
-                </Badge>
-              ) : null}
-              {detail?.session || selectedSessionSummary ? (
-                <Badge className="border-gray-700 bg-gray-900 text-gray-300">
-                  {getThinkingIntensityLabel(
-                    (detail?.session.thinkingIntensity ??
-                      selectedSessionSummary?.session.thinkingIntensity ??
-                      "balanced") as ThinkingIntensity,
-                    uiLocale
-                  )}
-                </Badge>
-              ) : null}
-              {isSelectedSessionRunning ? (
-                <Badge className="border-blue-500/20 bg-blue-500/10 text-blue-300">
-                  <span className="inline-flex items-center gap-1">
-                    <LoaderCircle className="h-3 w-3 animate-spin" />
-                    {copy.detail.live}
-                  </span>
-                </Badge>
-              ) : null}
-            </div>
+        <main className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[260px_minmax(0,_1fr)_380px]">
+          <div className="relative flex min-h-0 flex-col overflow-hidden bg-[#121826] border-r border-gray-800 shrink-0">
+            <SessionSidebar
+              copy={copy}
+              uiLocale={uiLocale}
+              sessions={sessions}
+              selectedId={selectedId}
+              activeRunSessionId={activeRunSessionId}
+              onOpenCreateSession={() => setIsCreateSessionOpen(true)}
+              onSelectSession={setSelectedId}
+            />
           </div>
 
-          <div className="council-scrollbar flex-1 overflow-y-auto px-6 py-6">
-            {detail && debateVisualization ? (
-              <div className="mb-6 space-y-4">
-                <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(320px,0.95fr)]">
-                  <div className="rounded-[28px] border border-blue-500/15 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.16),_rgba(8,15,28,0.92)_60%)] p-5 shadow-[0_20px_60px_rgba(2,6,23,0.35)]">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="max-w-2xl">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-blue-300/80">
-                          {getLiveWorkspaceLabel(uiLocale)}
-                        </p>
-                        <h3 className="mt-2 text-lg font-semibold text-white">{getLiveWorkspaceDescription(uiLocale, isSelectedSessionRunning)}</h3>
-                      </div>
-                      <Badge className="border-blue-400/20 bg-blue-500/10 text-blue-200">
-                        {debateVisualization.summary.activeStage
-                          ? getRoundStageLabel(debateVisualization.summary.activeStage, uiLocale)
-                          : getStatusLabel(detail.run?.status ?? detail.session.status, uiLocale)}
-                      </Badge>
-                    </div>
-
-                    <div className="mt-5 grid gap-3 md:grid-cols-2 2xl:grid-cols-4">
-                      <div className="rounded-[20px] border border-white/8 bg-black/10 px-4 py-4">
-                        <p className="text-[11px] uppercase tracking-[0.22em] text-gray-400">
-                          {getProgressMetricLabel("expected", uiLocale)}
-                        </p>
-                        <p className="mt-2 text-2xl font-semibold text-white">{debateVisualization.summary.expectedRounds}</p>
-                      </div>
-                      <div className="rounded-[20px] border border-white/8 bg-black/10 px-4 py-4">
-                        <p className="text-[11px] uppercase tracking-[0.22em] text-gray-400">
-                          {getProgressMetricLabel("completed", uiLocale)}
-                        </p>
-                        <p className="mt-2 text-2xl font-semibold text-white">{debateVisualization.summary.completedRounds}</p>
-                      </div>
-                      <div className="rounded-[20px] border border-white/8 bg-black/10 px-4 py-4">
-                        <p className="text-[11px] uppercase tracking-[0.22em] text-gray-400">
-                          {getProgressMetricLabel("stage", uiLocale)}
-                        </p>
-                        <p className="mt-2 text-lg font-semibold text-white">
-                          {debateVisualization.summary.activeStage
-                            ? getRoundStageLabel(debateVisualization.summary.activeStage, uiLocale)
-                            : getStatusLabel(detail.run?.status ?? detail.session.status, uiLocale)}
-                        </p>
-                      </div>
-                      <div className="rounded-[20px] border border-white/8 bg-black/10 px-4 py-4">
-                        <p className="text-[11px] uppercase tracking-[0.22em] text-gray-400">
-                          {getProgressMetricLabel("speaker", uiLocale)}
-                        </p>
-                        <p className="mt-2 text-lg font-semibold text-white">
-                          {latestFeedMessage ? latestFeedMessage.agentName : getWaitingFeedLabel(uiLocale, debateVisualization.summary.activeStage)}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="mt-5">
-                      <div className="mb-3 flex items-center justify-between gap-3">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400">
-                          {getScrumBoardLabel(uiLocale)}
-                        </p>
-                        <p className="text-xs text-gray-500">
-                          {debateVisualization.summary.messageCount} / {getContributionLabel(debateVisualization.summary.messageCount, uiLocale)}
-                        </p>
-                      </div>
-                      <div className="grid gap-3 lg:grid-cols-4">
-                        {debateVisualization.stages.map((stage) => {
-                          const completionRatio = Math.min(100, stage.progressRatio * 100);
-
-                          return (
-                            <div
-                              key={stage.key}
-                              className={cn(
-                                "rounded-[22px] border px-4 py-4 transition",
-                                stage.status === "active"
-                                  ? "border-blue-400/35 bg-blue-500/10 shadow-[0_16px_40px_rgba(37,99,235,0.18)]"
-                                  : stage.status === "completed"
-                                    ? "border-emerald-400/20 bg-emerald-500/8"
-                                    : "border-gray-800 bg-gray-950/50"
-                              )}
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <p className="text-sm font-semibold text-gray-100">{getRoundStageLabel(stage.key, uiLocale)}</p>
-                                  <p className="mt-1 text-xs text-gray-500">{getStageStatusLabel(stage.status, uiLocale)}</p>
-                                </div>
-                                <Badge
-                                  className={cn(
-                                    "border px-2.5 py-1 text-[10px]",
-                                    stage.status === "active"
-                                      ? "border-blue-400/20 bg-blue-500/10 text-blue-200"
-                                      : stage.status === "completed"
-                                        ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-300"
-                                        : "border-gray-700 bg-gray-900 text-gray-400"
-                                  )}
-                                >
-                                  {stage.completedRounds}/{stage.expectedRounds}
-                                </Badge>
-                              </div>
-                              <div className="mt-4 h-2 rounded-full bg-gray-900/80">
-                                <div
-                                  className={cn(
-                                    "h-full rounded-full transition-all",
-                                    stage.status === "active"
-                                      ? "bg-blue-400"
-                                      : stage.status === "completed"
-                                        ? "bg-emerald-400"
-                                        : "bg-gray-700"
-                                  )}
-                                  style={{ width: `${completionRatio}%` }}
-                                />
-                              </div>
-                              <div className="mt-3 space-y-1 text-xs text-gray-400">
-                                <p>{getSpeakerProgressLabel(stage.currentSpeakerCount, stage.totalSpeakerCount, uiLocale)}</p>
-                                <p>
-                                  {stage.currentRoundNumber
-                                    ? `${copy.detail.round} ${stage.currentRoundNumber}`
-                                    : getWaitingFeedLabel(uiLocale, stage.status === "pending" ? stage.key : null)}
-                                </p>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-[28px] border border-gray-800 bg-gray-950/75 p-5">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400">
-                          {getActivityFeedLabel(uiLocale)}
-                        </p>
-                        <h3 className="mt-2 text-lg font-semibold text-white">{copy.detail.live}</h3>
-                      </div>
-                      <Badge className="border-gray-700 bg-gray-900 text-gray-300">
-                        {latestFeedMessage ? latestFeedMessage.kind : getStageStatusLabel("active", uiLocale)}
-                      </Badge>
-                    </div>
-
-                    <div className="mt-4 space-y-3">
-                      {debateVisualization.activityFeed.map((entry, index) => (
-                        <div
-                          key={entry.type === "message" ? entry.id : `system-${entry.stage ?? "idle"}-${index}`}
-                          className="rounded-[20px] border border-gray-800 bg-gray-900/80 px-4 py-4"
-                        >
-                          {entry.type === "message" ? (
-                            <>
-                              <div className="flex items-center justify-between gap-3">
-                                <p className="text-sm font-semibold text-gray-100">{entry.agentName}</p>
-                                <Badge className={cn(
-                                  "border-gray-700 bg-gray-800 text-gray-300",
-                                  entry.isStreaming && "border-blue-400/20 bg-blue-500/10 text-blue-200"
-                                )}>
-                                  {entry.isStreaming ? `${getRoundStageLabel(entry.stage, uiLocale)} · Live` : getRoundStageLabel(entry.stage, uiLocale)}
-                                </Badge>
-                              </div>
-                              <p className="mt-2 text-sm leading-6 text-gray-300 line-clamp-3">{entry.label}</p>
-                              <p className="mt-2 text-xs text-gray-500">{getMessageKindLabel(entry.kind, uiLocale)}</p>
-                            </>
-                          ) : (
-                            <p className="text-sm leading-6 text-gray-400">
-                              {getWaitingFeedLabel(uiLocale, entry.stage)}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="rounded-[28px] border border-gray-800 bg-gray-950/75 p-5">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400">
-                        {getAgentBoardLabel(uiLocale)}
-                      </p>
-                      <h3 className="mt-2 text-lg font-semibold text-white">{activePreset?.name ?? timelineTitle}</h3>
-                    </div>
-                    <Badge className="border-gray-700 bg-gray-900 text-gray-300">
-                      {getContributionLabel(debateVisualization.summary.messageCount, uiLocale)}
-                    </Badge>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    {debateVisualization.agents.map((agent) => {
-                      const visual = getAgentVisual(agent.agentKey, agent.role);
-                      const Icon = visual.icon;
-
-                      return (
-                        <div key={agent.agentKey} className="rounded-[22px] border border-gray-800 bg-gray-900/80 px-4 py-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border", visual.bg, visual.border)}>
-                                <Icon size={18} className={visual.color} />
-                              </div>
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-semibold text-gray-100">{agent.agentName}</p>
-                                <p className="truncate text-xs text-gray-500">{agent.role}</p>
-                              </div>
-                            </div>
-                            <Badge
-                              className={cn(
-                                "border px-2.5 py-1 text-[10px]",
-                                agent.status === "active"
-                                  ? "border-blue-400/20 bg-blue-500/10 text-blue-200"
-                                  : agent.status === "done"
-                                    ? "border-emerald-400/20 bg-emerald-500/10 text-emerald-300"
-                                    : "border-gray-700 bg-gray-900 text-gray-400"
-                              )}
-                            >
-                              {getAgentStatusLabel(agent.status, uiLocale)}
-                            </Badge>
-                          </div>
-                          <p className="mt-4 text-sm text-gray-300">{getContributionLabel(agent.contributionCount, uiLocale)}</p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {!detail ? (
-              <div className="flex min-h-[560px] flex-col items-center justify-center rounded-[28px] border border-dashed border-gray-800 bg-gray-900/30 px-6 text-center">
-                <Users size={34} className="mb-4 text-gray-700" />
-                <p className="text-sm font-medium text-gray-300">{copy.detail.emptyTitle}</p>
-                <p className="mt-2 max-w-md text-sm leading-6 text-gray-500">{copy.detail.emptyDescription}</p>
-              </div>
-            ) : null}
-
-            <div className="space-y-8">
-              {debateVisualization?.timeline.map((round) => (
-                <div key={round.id} className="space-y-5">
-                  <div className="flex items-center gap-4">
-                    <div className="h-px flex-1 bg-gray-800" />
-                    <div className="flex items-center gap-2 rounded-full border border-gray-800 bg-gray-900 px-4 py-1.5">
-                      <Badge className="border-gray-700 bg-gray-800 text-gray-300">
-                        {copy.detail.round} {round.roundNumber}
-                      </Badge>
-                      <span className="text-xs font-semibold tracking-[0.14em] text-gray-400">
-                        {getRoundStageLabel(round.stage, uiLocale)}
-                      </span>
-                    </div>
-                    <div className="h-px flex-1 bg-gray-800" />
-                  </div>
-
-                  {round.summary ? (
-                    <div className="rounded-[22px] border border-gray-800 bg-gray-900/60 px-5 py-4">
-                      <p className="text-sm leading-6 text-gray-400">{round.summary}</p>
-                    </div>
+          <section className="relative flex min-h-0 flex-col overflow-hidden bg-[#0b0f19]">
+            <header className="px-8 py-6 flex items-center justify-between border-b border-gray-800 shrink-0 bg-[#0b0f19]/80 backdrop-blur-md z-10">
+              <div>
+                <h1 className="text-2xl font-bold text-white mb-2 flex items-center gap-3">
+                  {timelineTitle || copy.detail.emptyTitle}
+                  {detail?.run?.status === "completed" || selectedSessionSummary?.session.status === "completed" ? (
+                    <span className="px-2.5 py-1 bg-green-500/10 text-green-400 text-xs font-semibold rounded-full border border-green-500/20 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
+                      {copy.statuses.completed}
+                    </span>
                   ) : null}
 
-                  <div className="space-y-4">
-                    {round.messages.map((message, messageIndex) => {
-                      const agentRole =
-                        activePreset?.agents.find((agent) => agent.key === message.agentKey)?.role ?? message.role;
-                      const visual = getAgentVisual(message.agentKey, agentRole);
-                      const Icon = visual.icon;
-
-                      return (
-                        <div key={message.id} className="flex gap-4">
-                          <div className="flex shrink-0 flex-col items-center">
-                            <div
-                              className={cn(
-                                "flex h-10 w-10 items-center justify-center rounded-xl border shadow-[0_6px_18px_rgba(0,0,0,0.2)]",
-                                visual.bg,
-                                visual.border
-                              )}
-                            >
-                              <Icon size={18} className={visual.color} />
-                            </div>
-                            {messageIndex !== round.messages.length - 1 ? <div className="mt-2 h-full w-px bg-gray-800" /> : null}
-                          </div>
-
-                          <div className="min-w-0 flex-1 mb-4 border-b pb-5 border-gray-800 bg-gray-900/80 px-5 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.02)]">
-                            <div className="mb-3 flex flex-wrap items-center justify-between gap-3 border-b border-gray-800/80 pb-2">
-                              <div className="min-w-0">
-                                <p className="truncate text-sm font-semibold text-gray-100">{message.agentName}</p>
-                                <p className="truncate text-xs text-gray-500">{agentRole}</p>
-                              </div>
-                              <Badge className={cn(
-                                "border-gray-700 bg-gray-800 text-gray-300",
-                                message.isStreaming && "border-blue-400/20 bg-blue-500/10 text-blue-200"
-                              )}>
-                                {message.isStreaming ? `${getMessageKindLabel(message.kind, uiLocale)} · Live` : getMessageKindLabel(message.kind, uiLocale)}
-                              </Badge>
-                            </div>
-                            <p className="whitespace-pre-wrap text-sm leading-7 text-gray-300">{message.content}</p>
-                            {message.reasoning ? (
-                              <div className="mt-4 rounded-2xl border border-blue-500/15 bg-blue-500/5 px-4 py-3">
-                                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-300/80">Thinking</p>
-                                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-blue-100/80">{message.reasoning}</p>
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  {isSelectedSessionRunning ? (
+                    <span className="px-2.5 py-1 bg-blue-500/10 text-blue-400 text-xs font-semibold rounded-full border border-blue-500/20 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                      {copy.detail.live}
+                    </span>
+                  ) : null}
+                </h1>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge className="px-2.5 py-1.5 bg-gray-800/80 text-gray-300 text-xs font-medium rounded-lg border border-gray-700/50">
+                    {detail?.session.provider ?? selectedSessionSummary?.session.provider ?? connectionProvider?.label ?? copy.noProvider}
+                  </Badge>
+                  <Badge className="px-2.5 py-1.5 bg-gray-800/80 text-gray-300 text-xs font-medium rounded-lg border border-gray-700/50">
+                    {detail?.session.model ?? selectedSessionSummary?.session.model ?? sessionModel?.label ?? copy.noModel}
+                  </Badge>
+                  {detail?.session || selectedSessionSummary ? (
+                    <Badge className="px-2.5 py-1.5 bg-gray-800/80 text-gray-300 text-xs font-medium rounded-lg border border-gray-700/50">
+                      {getUiLanguageLabel(
+                        (detail?.session.language ?? selectedSessionSummary?.session.language ?? "ko") as SessionLanguage,
+                        uiLocale
+                      )}
+                    </Badge>
+                  ) : null}
+                  {detail?.session || selectedSessionSummary ? (
+                    <Badge className="px-2.5 py-1.5 bg-gray-800/80 text-gray-300 text-xs font-medium rounded-lg border border-gray-700/50">
+                      {getDebateIntensityLabel(
+                        (detail?.session.debateIntensity ??
+                          selectedSessionSummary?.session.debateIntensity ??
+                          DEBATE_INTENSITY_DEFAULT) as number,
+                        uiLocale
+                      )}
+                    </Badge>
+                  ) : null}
                 </div>
-              ))}
+              </div>
+            </header>
 
-              {liveTimelineMessage ? (
-                <div className="flex items-center gap-4">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-gray-800 bg-gray-900">
-                    <LoaderCircle className="h-4 w-4 animate-spin text-gray-400" />
-                  </div>
-                  <div className="flex-1 rounded-[22px] border border-gray-800 bg-gray-900/70 px-5 py-4">
-                    <p className="text-sm text-gray-400">{liveTimelineMessage}</p>
-                  </div>
+            <div className="council-scrollbar flex-1 overflow-y-auto px-6 py-6">
+              {detail && debateVisualization ? (
+                <LiveWorkspacePanel
+                  copy={copy}
+                  uiLocale={uiLocale}
+                  detail={detail}
+                  debateVisualization={debateVisualization}
+                  activePreset={activePreset}
+                  timelineTitle={timelineTitle}
+                  isSelectedSessionRunning={isSelectedSessionRunning}
+                  onSelectMessage={setSelectedMessageId}
+                  onSelectAgent={setSelectedAgentKey}
+                />
+              ) : null}
+
+              {!detail ? (
+                <div className="flex min-h-[560px] flex-col items-center justify-center border border-dashed border-gray-800/40 px-6 text-center">
+                  <Users size={34} className="mb-4 text-gray-700" />
+                  <p className="text-sm font-medium text-gray-300">{copy.detail.emptyTitle}</p>
+                  <p className="mt-2 max-w-md text-sm leading-6 text-gray-500">{copy.detail.emptyDescription}</p>
                 </div>
               ) : null}
+
+              <div ref={timelineEndRef} />
             </div>
+          </section>
 
-            <div ref={timelineEndRef} />
+          <div className="relative flex min-h-0 flex-col overflow-hidden bg-[#121826] border-l border-gray-800 shrink-0">
+            <DecisionSidebar
+              copy={copy}
+              uiLocale={uiLocale}
+              detail={detail}
+              selectedId={selectedId}
+              isSubmitting={isSubmitting}
+              isStoppingRun={isStoppingRun}
+              isSelectedSessionRunning={isSelectedSessionRunning}
+              onRerun={handleRerun}
+              onStop={handleStop}
+            />
           </div>
-        </section>
+        </main>
+      </div>
 
-        <aside className="flex w-[430px] shrink-0 flex-col overflow-y-auto border-l border-gray-800 bg-[#090d1a]/50">
-          <div className="border-b border-gray-800 px-6 py-5">
-            <h2 className="flex items-center gap-2 text-lg font-bold text-gray-100">
-              <CheckCircle2 size={20} className="text-emerald-400" />
-              {copy.decision.title}
-            </h2>
-            <p className="mt-1 text-sm text-gray-400">{getDecisionSectionDescription(uiLocale)}</p>
-            <div className="mt-5 flex flex-wrap gap-2">
-              <Button
-                variant="secondary"
-                size="sm"
-                className="h-10 rounded-xl border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700"
-                onClick={handleRerun}
-                disabled={!selectedId || isSubmitting || isStoppingRun || isSelectedSessionRunning}
-              >
-                <RefreshCcw className="mr-2 h-4 w-4" />
-                {copy.decision.rerun}
-              </Button>
-              {isSelectedSessionRunning ? (
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  className="h-10 rounded-xl border-red-500/30 bg-red-500/10 text-red-100 hover:bg-red-500/20"
-                  onClick={handleStop}
-                  disabled={!selectedId || isStoppingRun}
-                >
-                  {isStoppingRun ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <X className="mr-2 h-4 w-4" />}
-                  {copy.decision.stop}
-                </Button>
-              ) : null}
-              {selectedId ? (
-                <>
-                  <a href={`/api/sessions/${selectedId}/export?format=md`} target="_blank" rel="noreferrer">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-10 rounded-xl border border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700"
-                    >
-                      <Download className="mr-2 h-4 w-4" />
-                      {copy.decision.markdown}
-                    </Button>
-                  </a>
-                  <a href={`/api/sessions/${selectedId}/export?format=json`} target="_blank" rel="noreferrer">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-10 rounded-xl border border-gray-700 bg-gray-800 text-gray-200 hover:bg-gray-700"
-                    >
-                      <Download className="mr-2 h-4 w-4" />
-                      {copy.decision.json}
-                    </Button>
-                  </a>
-                </>
-              ) : null}
-            </div>
-          </div>
+      <SettingsModal
+        copy={copy}
+        uiLocale={uiLocale}
+        isOpen={isSettingsOpen}
+        settingsTab={settingsTab}
+        shouldReturnToSession={shouldReturnToSession}
+        providerOptions={providerOptions}
+        connectionDraft={connectionDraft}
+        connectionProvider={connectionProvider}
+        connectionAuthOption={connectionAuthOption}
+        hasProviders={hasProviders}
+        isProviderConnected={isProviderConnected}
+        isSavingConnection={isSavingConnection}
+        isSavingMcpSettings={isSavingMcpSettings}
+        isSavingSkillsSettings={isSavingSkillsSettings}
+        isSettingsConnectionSaved={isSettingsConnectionSaved}
+        isPresetTabLocked={isPresetTabLocked}
+        isRefreshingModels={isRefreshingModels}
+        isGeneratingPreset={isGeneratingPreset}
+        isPresetGenerationSuccess={isPresetGenerationSuccess}
+        isConnectionDirty={isConnectionDirty}
+        pendingOauth={pendingOauth}
+        savedSettings={savedSettings}
+        mcpSettings={mcpSettings}
+        skillsSettings={skillsSettings}
+        savedConnectionState={savedConnectionState}
+        sessionProvider={sessionProvider}
+        sessionModelOptions={sessionModelOptions}
+        sessionLanguageOptions={sessionLanguageOptions}
+        thinkingOptions={thinkingOptions}
+        selectedLanguage={selectedLanguage}
+        form={form}
+        generatedPresetPrompt={generatedPresetPrompt}
+        generatedPresetAgentCount={generatedPresetAgentCount}
+        generatedPreset={generatedPreset}
+        onClose={handleCloseSettings}
+        onReturnToSession={handleReturnToSession}
+        onSwitchTab={setSettingsTab}
+        onConnectionProviderChange={(providerId) => {
+          const nextProvider = providerOptions.find((provider) => provider.id === providerId) ?? providerOptions[0];
+          setConnectionDraft((current) =>
+            reconcileConnection(
+              providerOptions,
+              {
+                ...current,
+                providerId,
+                authMode: nextProvider ? pickPreferredAuthModeId(nextProvider.authModes, current.authMode) : current.authMode,
+                apiKey: ""
+              },
+              { providerId: defaultProvider, authMode: defaultAuthMode }
+            )
+          );
+        }}
+        onConnectionAuthModeChange={(authMode) => setConnectionDraft((current) => ({ ...current, authMode, apiKey: "" }))}
+        onConnectionApiKeyChange={(apiKey) => setConnectionDraft((current) => ({ ...current, apiKey }))}
+        onPendingOauthCodeChange={(code) => setPendingOauth((current) => (current ? { ...current, code } : current))}
+        onSaveConnection={handleSaveConnection}
+        onOpenLogin={handleOpenLogin}
+        onCompleteOauth={handleCompleteOauth}
+        onDisconnectAuth={handleDisconnectAuth}
+        onMcpSettingsChange={setMcpSettings}
+        onSaveMcpSettings={handleSaveMcpSettings}
+        onSkillsSettingsChange={setSkillsSettings}
+        onSaveSkillsSettings={handleSaveSkillsSettings}
+        onFormChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
+        onGeneratedPresetPromptChange={setGeneratedPresetPrompt}
+        onGeneratedPresetAgentCountChange={setGeneratedPresetAgentCount}
+        onGeneratePreset={handleGeneratePreset}
+      />
 
-          <div className="council-scrollbar flex-1 px-6 py-6 overflow-y-auto">
-            {!detail?.decision ? (
-              <div className="flex min-h-[560px] flex-col items-center justify-center rounded-[28px] border border-dashed border-gray-800 bg-gray-950/50 px-6 text-center">
-                <Info size={32} className="mb-4 text-gray-700" />
-                <p className="max-w-md text-sm leading-6 text-gray-500">{copy.decision.empty}</p>
-              </div>
-            ) : null}
+      <CreateSessionModal
+        copy={copy}
+        uiLocale={uiLocale}
+        isOpen={isCreateSessionOpen}
+        form={form}
+        availablePresets={availablePresets}
+        activePreset={activePreset}
+        generatedPreset={generatedPreset}
+        savedProvider={savedProvider}
+        savedAuthOption={savedAuthOption}
+        savedConnectionState={savedConnectionState}
+        selectedLanguage={selectedLanguage}
+        selectedDebateIntensityLabel={selectedDebateIntensityLabel}
+        selectedDebateIntensityDescription={selectedDebateIntensityDescription}
+        selectedThinkingIntensityLabel={selectedThinkingIntensityLabel}
+        selectedThinkingIntensityDescription={selectedThinkingIntensityDescription}
+        sessionProvider={sessionProvider}
+        sessionModel={sessionModel}
+        sessionModelOptions={sessionModelOptions}
+        sessionLanguageOptions={sessionLanguageOptions}
+        thinkingOptions={thinkingOptions}
+        isConnectionDirty={isConnectionDirty}
+        isRefreshingModels={isRefreshingModels}
+        isSubmitting={isSubmitting}
+        onClose={() => setIsCreateSessionOpen(false)}
+        onOpenPresetStudio={handleOpenPresetStudio}
+        onCreate={handleCreate}
+        onFormChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
+      />
 
-            {detail?.decision ? (
-              <div className="flex flex-col">
-                <section className="mb-4 border-b pb-5 border-emerald-500/20 bg-emerald-500/8 px-5 py-5">
-                  <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-emerald-400">
-                    <CheckCircle2 size={16} />
-                    {copy.decision.topRecommendation}
-                  </h3>
-                  <p className="text-sm leading-7 text-emerald-50">{detail.decision.topRecommendation}</p>
-                </section>
-
-                <section className="mb-4 border-b pb-5 border-gray-800 bg-gray-950/90 px-5 py-5">
-                  <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-gray-300">
-                    <Hexagon size={16} />
-                    {copy.decision.finalSummary}
-                  </h3>
-                  <p className="text-sm leading-7 text-gray-400">{detail.decision.finalSummary}</p>
-                </section>
-
-                {detail.decision.risks.length > 0 ? (
-                  <section className="mb-4 border-b pb-5 border-red-500/15 bg-red-500/6 px-5 py-5">
-                    <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-red-400">
-                      <AlertTriangle size={16} />
-                      {getRiskSectionLabel(uiLocale)}
-                    </h3>
-                    <ul className="space-y-3">
-                      {detail.decision.risks.map((risk) => (
-                        <li key={risk} className="flex items-start gap-2 text-sm leading-6 text-gray-300">
-                          <span className="mt-1 text-xs text-red-400">&bull;</span>
-                          <span>{risk}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </section>
-                ) : null}
-
-                {detail.run ? (
-                  <div className="rounded-[20px] border border-gray-800 bg-gray-950/80 px-4 py-3 text-sm text-gray-400">
-                    {copy.decision.status}: {getDisplayRunStatusLabel({
-                      status: detail.run.status,
-                      errorMessage: detail.run.errorMessage,
-                      locale: uiLocale
-                    })} / {copy.decision.updated}:{" "}
-                    {formatUiTimestamp(detail.run.completedAt ?? detail.run.updatedAt, uiLocale)}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        </aside>
-      </main>
-
-      {isSettingsOpen && (
+      {detailedMessageInfo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="flex flex-col w-full max-w-lg max-h-[90vh] rounded-[24px] border border-gray-800 bg-[#060913] shadow-[0_24px_50px_rgba(0,0,0,0.5)] overflow-hidden">
+          <div role="dialog" aria-modal="true" aria-labelledby="message-dialog-title" className="flex flex-col w-full max-w-3xl max-h-[90vh] rounded-[24px] border border-gray-800 bg-[#060913] shadow-[0_24px_50px_rgba(0,0,0,0.5)] overflow-hidden">
             <div className="flex items-center justify-between border-b border-gray-800 px-6 py-4 bg-[#090d1a]">
-              <h2 className="text-lg font-bold text-gray-100">{copy.connection.title}</h2>
-              <button className="text-gray-400 hover:text-white" onClick={() => setIsSettingsOpen(false)}>
+              <div id="message-dialog-title" className="flex items-center gap-2 rounded-full border border-gray-800 bg-gray-900 px-4 py-1.5">
+                <Badge className="border-gray-700 bg-gray-800 text-gray-300">
+                  {copy.detail.round} {detailedMessageInfo.round.roundNumber}
+                </Badge>
+                <span className="text-xs font-semibold tracking-[0.14em] text-gray-400">
+                  {getRoundStageLabel(detailedMessageInfo.round.stage, uiLocale)}
+                </span>
+              </div>
+              <button aria-label={getCloseLabel(uiLocale)} className="text-gray-400 hover:text-white" onClick={() => setSelectedMessageId(null)}>
                 <X size={20} />
               </button>
             </div>
-            <div className="council-scrollbar flex-1 overflow-y-auto p-6">
-              <div>
-                <div className="mb-5">
-                  <h2 className="flex items-center gap-2 text-sm font-bold text-gray-200">
-                    <Wifi size={16} className="text-gray-400" />
-                    {copy.connection.title}
-                  </h2>
-                  <p className="mt-1 text-xs leading-5 text-gray-500">{getConnectionSectionDescription(uiLocale)}</p>
+            <div className="council-scrollbar flex-1 overflow-y-auto p-6 bg-[#060913]">
+              <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-gray-800 pb-4">
+                <div className="min-w-0">
+                  <p className="text-lg font-bold text-gray-100">{detailedMessageInfo.message.agentName}</p>
+                  <p className="text-sm text-gray-500">
+                    {activePreset?.agents.find((agent) => agent.key === detailedMessageInfo.message.agentKey)?.role ?? detailedMessageInfo.message.role}
+                  </p>
                 </div>
-
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400">
-                      {copy.connection.provider}
-                    </label>
-                    <div className="relative">
-                      <Select
-                        className="h-12 appearance-none rounded-[18px] border-gray-800 bg-gray-900/80 px-4 pr-10 text-sm text-gray-100"
-                        value={connectionDraft.providerId}
-                        disabled={!hasProviders}
-                        onChange={(event: ChangeEvent<HTMLSelectElement>) => {
-                          const nextProvider =
-                            providerOptions.find((provider) => provider.id === event.target.value) ?? providerOptions[0];
-                          setConnectionDraft((current) =>
-                            reconcileConnection(
-                              providerOptions,
-                              {
-                                ...current,
-                                providerId: event.target.value,
-                                authMode:
-                                  nextProvider
-                                    ? pickPreferredAuthModeId(nextProvider.authModes, current.authMode)
-                                    : current.authMode,
-                                apiKey: ""
-                              },
-                              { providerId: defaultProvider, authMode: defaultAuthMode }
-                            )
-                          );
-                        }}
-                      >
-                        {providerOptions.map((provider) => (
-                          <option key={provider.id} value={provider.id}>
-                            {provider.label}
-                          </option>
-                        ))}
-                      </Select>
-                      <ChevronDown size={16} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-500" />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400">
-                      {copy.connection.loginMethod}
-                    </label>
-                    <div className="relative">
-                      <Select
-                        className="h-12 appearance-none rounded-[18px] border-gray-800 bg-gray-900/80 px-4 pr-10 text-sm text-gray-100"
-                        value={connectionDraft.authMode}
-                        disabled={!connectionProvider}
-                        onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-                          setConnectionDraft((current) => ({ ...current, authMode: event.target.value, apiKey: "" }))
-                        }
-                      >
-                        {(connectionProvider?.authModes ?? []).map((authOption) => (
-                          <option key={authOption.id} value={authOption.id}>
-                            {authOption.label}
-                          </option>
-                        ))}
-                      </Select>
-                      <ChevronDown size={16} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-500" />
-                    </div>
-                    <p className="text-xs leading-5 text-gray-500">
-                      {connectionAuthOption?.description ?? copy.connection.authDescriptionFallback}
-                    </p>
-                  </div>
-
-                  <div className="rounded-[20px] border border-gray-800 bg-gray-900/70 p-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-xs font-medium text-gray-400">{copy.connection.status}</span>
-                      <Badge
-                        className={cn(
-                          "border px-2.5 py-1 text-[10px]",
-                          isProviderConnected
-                            ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-                            : "border-gray-700 bg-gray-800 text-gray-400"
-                        )}
-                      >
-                        {isProviderConnected ? copy.connection.connected : copy.connection.notConnected}
-                      </Badge>
-                    </div>
-                    <p className="mt-2 text-xs leading-5 text-gray-500">
-                      {isProviderConnected ? copy.connection.connectedDescription : copy.connection.notConnectedDescription}
-                    </p>
-                  </div>
-
-                  {connectionAuthOption?.type === "api" ? (
-                    <div className="space-y-2">
-                      <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400">
-                        {connectionAuthOption.inputLabel ?? copy.connection.apiKey}
-                      </label>
-                      <Input
-                        type="password"
-                        className="h-12 rounded-[18px] border-gray-800 bg-gray-900/80 text-sm text-gray-100 placeholder:text-gray-500"
-                        value={connectionDraft.apiKey}
-                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                          setConnectionDraft((current) => ({ ...current, apiKey: event.target.value }))
-                        }
-                        placeholder={connectionAuthOption.inputPlaceholder ?? copy.connection.apiPlaceholder}
-                      />
-                      <p className="text-xs leading-5 text-gray-500">{copy.connection.apiHelp}</p>
-                    </div>
-                  ) : null}
-
-                  {connectionAuthOption?.type === "oauth" ? (
-                    <div className="rounded-[20px] border border-gray-800 bg-gray-900/70 p-4">
-                      <div className="flex flex-wrap gap-2">
-                        {isProviderConnected ? (
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-10 rounded-xl border border-gray-700 bg-gray-800 px-4 text-gray-200 hover:bg-gray-700"
-                            onClick={handleDisconnectAuth}
-                          >
-                            {copy.connection.disconnect}
-                          </Button>
-                        ) : (
-                          <Button
-                            type="button"
-                            size="sm"
-                            className="h-10 rounded-xl bg-blue-600 px-4 text-white hover:bg-blue-500"
-                            onClick={handleOpenLogin}
-                          >
-                            <LogIn className="mr-2 h-4 w-4" />
-                            {copy.connection.openLogin}
-                          </Button>
-                        )}
-                      </div>
-                      <p className="mt-3 text-xs leading-5 text-gray-500">
-                        {isProviderConnected ? copy.connection.oauthConnectedDescription : copy.connection.oauthStartDescription}
-                      </p>
-                    </div>
-                  ) : null}
-
-                  {pendingOauth ? (
-                    <div className="rounded-[20px] border border-orange-500/20 bg-orange-500/8 p-4">
-                      <p className="text-sm font-medium text-gray-100">{copy.connection.oauthProgress}</p>
-                      <p className="mt-2 text-xs leading-5 text-gray-400">{pendingOauth.instructions}</p>
-                      {pendingOauth.method === "code" ? (
-                        <div className="mt-3 space-y-3">
-                          <Input
-                            className="h-12 rounded-[18px] border-orange-500/20 bg-gray-900/80 text-sm text-gray-100"
-                            value={pendingOauth.code}
-                            onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                              setPendingOauth((current) => (current ? { ...current, code: event.target.value } : current))
-                            }
-                            placeholder={copy.connection.oauthCodePlaceholder}
-                          />
-                          <Button
-                            type="button"
-                            className="h-11 w-full rounded-xl bg-blue-600 text-white hover:bg-blue-500"
-                            onClick={handleCompleteOauth}
-                            disabled={pendingOauth.isSubmitting || pendingOauth.code.trim().length === 0}
-                          >
-                            {pendingOauth.isSubmitting ? (
-                              <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-                            ) : (
-                              <LogIn className="mr-2 h-4 w-4" />
-                            )}
-                            {copy.connection.oauthComplete}
-                          </Button>
-                        </div>
-                      ) : (
-                        <div className="mt-3 space-y-2">
-                          <p className="text-xs leading-5 text-gray-400">{copy.connection.oauthAutoDescription}</p>
-                          <p className="text-xs leading-5 text-gray-500">{copy.connection.oauthFallbackHint}</p>
-                        </div>
-                      )}
-                    </div>
-                  ) : null}
-
-                  <div className="space-y-2 pt-1">
-                    <Button
-                      className="h-11 w-full rounded-xl border border-gray-700 bg-gray-800 text-gray-100 hover:bg-gray-700"
-                      onClick={handleSaveConnection}
-                      disabled={isSavingConnection || !connectionProvider}
-                    >
-                      {isSavingConnection ? (
-                        <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        <Save className="mr-2 h-4 w-4" />
-                      )}
-                      {copy.connection.save}
-                    </Button>
-                    <p className="text-xs leading-5 text-gray-500">
-                      {copy.connection.savedAt}: {formatUiTimestamp(savedSettings.updatedAt, uiLocale)}
-                    </p>
-                  </div>
-                </div>
+                <Badge className={cn(
+                  "border-gray-700 bg-gray-800 text-gray-300",
+                  detailedMessageInfo.message.isStreaming && "border-blue-400/20 bg-blue-500/10 text-blue-200"
+                )}>
+                  {detailedMessageInfo.message.isStreaming ? `${getMessageKindLabel(detailedMessageInfo.message.kind, uiLocale)} · Live` : getMessageKindLabel(detailedMessageInfo.message.kind, uiLocale)}
+                </Badge>
               </div>
-            </div>
-            <div className="border-t border-gray-800 bg-[#090d1a] px-6 py-4 flex justify-end">
-              <Button variant="secondary" className="bg-gray-800 text-white hover:bg-gray-700" onClick={() => setIsSettingsOpen(false)}>
-                닫기
-              </Button>
+
+              {detailedMessageInfo.message.reasoning ? (
+                <div className="mb-6 rounded-2xl border border-blue-500/15 bg-blue-500/5 px-5 py-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-300/80 mb-3 flex items-center gap-2">
+                    <Lightbulb size={14} className="text-blue-400" />
+                    생각 과정 (Reasoning Process)
+                  </p>
+                  <MarkdownContent
+                    content={detailedMessageInfo.message.reasoning}
+                    className="text-sm text-blue-100/90 [&_a]:text-blue-200 [&_blockquote]:border-blue-300/30 [&_code]:border-blue-200/20 [&_code]:bg-blue-950/30 [&_hr]:border-blue-300/20 [&_pre]:border-blue-200/20 [&_pre]:bg-blue-950/40 [&_table]:border-blue-300/20 [&_tbody_tr]:border-blue-300/15 [&_th]:bg-blue-300/10"
+                  />
+                </div>
+              ) : null}
+
+              <div>
+                <MarkdownContent content={detailedMessageInfo.message.content} className="text-[15px] text-gray-200" />
+              </div>
             </div>
           </div>
         </div>
       )}
-      {isCreateSessionOpen && (
+
+      {selectedAgentInfo && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="flex flex-col w-full max-w-2xl max-h-[90vh] rounded-[24px] border border-gray-800 bg-[#060913] shadow-[0_24px_50px_rgba(0,0,0,0.5)] overflow-hidden">
+          <div role="dialog" aria-modal="true" aria-labelledby="agent-dialog-title" className="flex flex-col w-full max-w-4xl max-h-[90vh] rounded-[24px] border border-gray-800 bg-[#060913] shadow-[0_24px_50px_rgba(0,0,0,0.5)] overflow-hidden">
             <div className="flex items-center justify-between border-b border-gray-800 px-6 py-4 bg-[#090d1a]">
-              <h2 className="text-lg font-bold text-gray-100">{copy.session.title}</h2>
-              <button className="text-gray-400 hover:text-white" onClick={() => setIsCreateSessionOpen(false)}>
+              <div className="flex items-center flex-wrap gap-4">
+                <div className="flex items-center gap-3">
+                  <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border", getAgentVisual(selectedAgentInfo.agentKey, selectedAgentInfo.role).bg, getAgentVisual(selectedAgentInfo.agentKey, selectedAgentInfo.role).border)}>
+                    {(() => {
+                      const Icon = getAgentVisual(selectedAgentInfo.agentKey, selectedAgentInfo.role).icon;
+                      return <Icon size={18} className={getAgentVisual(selectedAgentInfo.agentKey, selectedAgentInfo.role).color} />;
+                    })()}
+                  </div>
+                  <div>
+                    <h2 id="agent-dialog-title" className="text-lg font-bold text-gray-100">{selectedAgentInfo.agentName}</h2>
+                    <p className="text-xs text-gray-500">{selectedAgentInfo.role}</p>
+                  </div>
+                </div>
+                <Badge className="border-gray-700 bg-gray-900 text-gray-300 ml-4">
+                  {selectedAgentMessages.length}개 메시지
+                </Badge>
+              </div>
+              <button aria-label={getCloseLabel(uiLocale)} className="text-gray-400 hover:text-white shrink-0" onClick={() => setSelectedAgentKey(null)}>
                 <X size={20} />
               </button>
             </div>
-            <div className="council-scrollbar flex-1 overflow-y-auto p-6">
-              <div>
-                <div className="mb-5">
-                  <h2 className="flex items-center gap-2 text-sm font-bold text-gray-200">
-                    <Lightbulb size={16} className="text-blue-400" />
-                    {copy.session.title}
-                  </h2>
-                  <p className="mt-1 text-xs leading-5 text-gray-500">{getSessionSectionDescription(uiLocale)}</p>
+
+            <div className="council-scrollbar flex-1 overflow-y-auto p-6 bg-[#060913] space-y-6">
+              {selectedAgentMessages.length === 0 ? (
+                <div className="flex min-h-[300px] flex-col items-center justify-center rounded-[20px] border border-dashed border-gray-800 bg-gray-900/30 p-8 text-center">
+                  <p className="text-gray-500">아직 등록된 메시지가 없습니다.</p>
                 </div>
-
-                <div className="space-y-4">
-                  <div className="rounded-[20px] border border-gray-800 bg-gray-900/70 p-4">
-                    <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400">
-                      {copy.session.activeConnection}
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      <Badge className="border-gray-700 bg-gray-800/90 text-gray-300">
-                        {savedProvider?.label ?? copy.session.providerNotSaved}
-                      </Badge>
-                      <Badge className="border-gray-700 bg-gray-800/90 text-gray-300">
-                        {savedAuthOption?.label ?? copy.session.loginNotSaved}
-                      </Badge>
-                      <Badge
-                        className={cn(
-                          "border px-3 py-1 text-xs",
-                          savedConnectionState.connected
-                            ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-                            : "border-gray-700 bg-gray-800 text-gray-400"
-                        )}
-                      >
-                        {savedConnectionState.connected ? copy.connection.connected : copy.connection.notConnected}
-                      </Badge>
-                      <Badge className="border-gray-700 bg-gray-800/90 text-gray-300">{selectedLanguage.label}</Badge>
-                      <Badge className="border-gray-700 bg-gray-800/90 text-gray-300">
-                        {sessionModel?.label ?? copy.session.modelNotSaved}
-                      </Badge>
-                      <Badge className="border-gray-700 bg-gray-800/90 text-gray-300">{selectedDebateIntensityLabel}</Badge>
-                      <Badge className="border-gray-700 bg-gray-800/90 text-gray-300">{selectedThinkingIntensityLabel}</Badge>
-                    </div>
-                    {!savedConnectionState.connected ? (
-                      <p className="mt-3 text-xs leading-5 text-gray-500">{copy.session.connectHint}</p>
-                    ) : null}
-                    {isConnectionDirty ? (
-                      <p className="mt-3 text-xs leading-5 text-gray-500">{copy.session.dirtyHint}</p>
-                    ) : null}
+              ) : selectedAgentMessages.map((m, idx) => (
+                <div key={m.message.id} className="rounded-[20px] border border-gray-800 bg-gray-900/60 p-5 relative">
+                  <div className="absolute top-5 right-5 text-[10px] font-semibold text-gray-600">#{idx + 1}</div>
+                  <div className="mb-4 flex flex-wrap items-center gap-2">
+                    <Badge className="border-gray-700 bg-gray-800 text-gray-300">
+                      라운드 {m.round.roundNumber}
+                    </Badge>
+                    <Badge className="border-gray-700 bg-gray-800 text-gray-300">
+                      {getRoundStageLabel(m.round.stage, uiLocale)}
+                    </Badge>
+                    <Badge className={cn("border-gray-700 bg-gray-800 text-gray-300", m.message.isStreaming && "border-blue-400/20 bg-blue-500/10 text-blue-200")}>
+                      {m.message.isStreaming ? `${getMessageKindLabel(m.message.kind, uiLocale)} · Live` : getMessageKindLabel(m.message.kind, uiLocale)}
+                    </Badge>
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400">
-                      {copy.session.titleLabel}
-                    </label>
-                    <Input
-                      className="h-12 rounded-[18px] border-gray-800 bg-gray-900/80 text-sm text-gray-100 placeholder:text-gray-500"
-                      value={form.title}
-                      onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                        setForm((current) => ({ ...current, title: event.target.value }))
-                      }
-                      placeholder={copy.session.titlePlaceholder}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400">
-                      {copy.session.topicLabel}
-                    </label>
-                    <Textarea
-                      className="min-h-[112px] rounded-[20px] border-gray-800 bg-gray-900/80 text-sm text-gray-100 placeholder:text-gray-500"
-                      value={form.prompt}
-                      onChange={(event: ChangeEvent<HTMLTextAreaElement>) =>
-                        setForm((current) => ({ ...current, prompt: event.target.value }))
-                      }
-                      placeholder={copy.session.topicPlaceholder}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400">
-                      {copy.session.presetLabel}
-                    </label>
-                    <div className="relative">
-                      <Select
-                        className="h-12 appearance-none rounded-[18px] border-gray-800 bg-gray-900/80 px-4 pr-10 text-sm text-gray-100"
-                        value={form.presetId}
-                        onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-                          setForm((current) => ({ ...current, presetId: event.target.value }))
-                        }
-                      >
-                        {availablePresets.map((preset) => (
-                          <option key={preset.id} value={preset.id}>
-                            {preset.name}
-                          </option>
-                        ))}
-                      </Select>
-                      <ChevronDown size={16} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-500" />
-                    </div>
-                  </div>
-
-                  <div className="rounded-[20px] border border-gray-800 bg-gray-900/50 p-4">
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400">
-                          {copy.session.customPresetTitle}
-                        </p>
-                        <p className="mt-2 text-sm text-gray-300">{copy.session.customPresetDescription}</p>
-                      </div>
-                      <Badge className="border-gray-700 bg-gray-800/90 text-gray-300">{generatedPresetAgentCount} agents</Badge>
-                    </div>
-
-                    <div className="mt-4 space-y-2">
-                      <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400">
-                        {copy.session.customPresetPromptLabel}
-                      </label>
-                      <Textarea
-                        className="min-h-[112px] rounded-[20px] border-gray-800 bg-gray-900/80 text-sm text-gray-100 placeholder:text-gray-500"
-                        value={generatedPresetPrompt}
-                        onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setGeneratedPresetPrompt(event.target.value)}
-                        placeholder={copy.session.customPresetPromptPlaceholder}
+                  {m.message.reasoning ? (
+                    <div className="mb-5 rounded-xl border border-blue-500/15 bg-blue-500/5 px-4 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-300/80 mb-2 flex items-center gap-2">
+                        <Lightbulb size={12} className="text-blue-400" />
+                        생각 과정
+                      </p>
+                      <MarkdownContent
+                        content={m.message.reasoning}
+                        className="text-xs text-blue-100/70 [&_a]:text-blue-200 [&_blockquote]:border-blue-300/30 [&_code]:border-blue-200/20 [&_code]:bg-blue-950/30 [&_hr]:border-blue-300/20 [&_pre]:border-blue-200/20 [&_pre]:bg-blue-950/40 [&_table]:border-blue-300/20 [&_tbody_tr]:border-blue-300/15 [&_th]:bg-blue-300/10"
                       />
                     </div>
+                  ) : null}
 
-                    <div className="mt-4 grid gap-4 md:grid-cols-[160px_minmax(0,1fr)]">
-                      <div className="space-y-2">
-                        <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400">
-                          {copy.session.customPresetAgentCountLabel}
-                        </label>
-                        <Input
-                          type="number"
-                          min={GENERATED_PRESET_AGENT_COUNT_MIN}
-                          max={GENERATED_PRESET_AGENT_COUNT_MAX}
-                          step={1}
-                          className="h-12 rounded-[18px] border-gray-800 bg-gray-900/80 text-sm text-gray-100"
-                          value={generatedPresetAgentCount}
-                          onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                            setGeneratedPresetAgentCount(clampAgentCount(Number(event.target.value)))
-                          }
-                        />
-                      </div>
-
-                      <div className="flex items-end">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          className="h-12 w-full rounded-xl border border-gray-700 bg-gray-800 text-gray-100 hover:bg-gray-700"
-                          onClick={handleGeneratePreset}
-                          disabled={
-                            isGeneratingPreset ||
-                            generatedPresetPrompt.trim().length < 10 ||
-                            !savedSettings.providerId ||
-                            !form.model ||
-                            !savedConnectionState.connected ||
-                            isConnectionDirty
-                          }
-                        >
-                          {isGeneratingPreset ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4" />}
-                          {copy.session.generatePreset}
-                        </Button>
-                      </div>
-                    </div>
-
-                    {generatedPreset ? (
-                      <div className="mt-4 rounded-[18px] border border-blue-500/20 bg-blue-500/5 p-4">
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-semibold text-white">{generatedPreset.name}</p>
-                            <p className="mt-1 text-sm leading-6 text-gray-300">{generatedPreset.description}</p>
-                          </div>
-                          <Badge className="border-blue-500/20 bg-blue-500/10 text-blue-200">{copy.session.generatedPresetBadge}</Badge>
-                        </div>
-
-                        <div className="mt-4 grid gap-3 md:grid-cols-2">
-                          {generatedPreset.agents.map((agent) => (
-                            <div key={agent.key} className="rounded-[16px] border border-gray-800 bg-gray-950/60 px-4 py-3">
-                              <p className="text-sm font-semibold text-gray-100">{agent.name}</p>
-                              <p className="mt-1 text-xs text-gray-500">{agent.role}</p>
-                              <p className="mt-3 text-xs leading-5 text-gray-400">{agent.goal}</p>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                    <div className="space-y-2">
-                      <div className="flex items-center justify-between gap-3">
-                        <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400">
-                          {getSessionModelLabel(uiLocale)}
-                        </label>
-                        {isRefreshingModels ? <span className="text-[11px] text-gray-500">{copy.refreshing}</span> : null}
-                      </div>
-                      <div className="relative">
-                        <Select
-                          className="h-12 appearance-none rounded-[18px] border-gray-800 bg-gray-900/80 px-4 pr-10 text-sm text-gray-100"
-                          value={form.model}
-                          disabled={!sessionProvider || sessionModelOptions.length === 0}
-                          onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-                            setForm((current) => ({ ...current, model: event.target.value }))
-                          }
-                        >
-                          {sessionModelOptions.map((model) => (
-                            <option key={model.id} value={model.id}>
-                              {model.label}
-                            </option>
-                          ))}
-                        </Select>
-                        <ChevronDown size={16} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-500" />
-                      </div>
-                      <p className="text-xs leading-5 text-gray-500">
-                        {sessionModel?.description ?? getSessionModelHint(uiLocale)}
-                      </p>
-                      {sessionModel?.supportsStructuredOutput ? (
-                        <p className="flex items-center gap-1 text-[11px] text-emerald-400">
-                          <CheckCircle2 size={12} />
-                          Structured output ready
-                        </p>
-                      ) : null}
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400">
-                        {copy.session.languageLabel}
-                      </label>
-                      <div className="relative">
-                        <Select
-                          className="h-12 appearance-none rounded-[18px] border-gray-800 bg-gray-900/80 px-4 pr-10 text-sm text-gray-100"
-                          value={form.language}
-                          onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-                            setForm((current) => ({ ...current, language: event.target.value as SessionLanguage }))
-                          }
-                        >
-                          {sessionLanguageOptions.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </Select>
-                        <ChevronDown size={16} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-500" />
-                      </div>
-                      <p className="text-xs leading-5 text-gray-500">{selectedLanguage.description}</p>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                    <div className="space-y-2">
-                      <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400">
-                        {copy.session.debateIntensityLabel}
-                      </label>
-                      <Input
-                        type="number"
-                        min={DEBATE_INTENSITY_MIN}
-                        max={DEBATE_INTENSITY_MAX}
-                        step={1}
-                        className="h-12 rounded-[18px] border-gray-800 bg-gray-900/80 text-sm text-gray-100"
-                        value={form.debateIntensity}
-                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                          setForm((current) => ({
-                            ...current,
-                            debateIntensity: clampDebateIntensity(Number(event.target.value))
-                          }))
-                        }
-                      />
-                      <p className="text-xs leading-5 text-gray-500">
-                        {copy.session.debateIntensityHint} {selectedDebateIntensityDescription}
-                      </p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400">
-                        {getThinkingFieldLabel(uiLocale)}
-                      </label>
-                      <div className="relative">
-                        <Select
-                          className="h-12 appearance-none rounded-[18px] border-gray-800 bg-gray-900/80 px-4 pr-10 text-sm text-gray-100"
-                          value={form.thinkingIntensity}
-                          onChange={(event: ChangeEvent<HTMLSelectElement>) =>
-                            setForm((current) => ({
-                              ...current,
-                              thinkingIntensity: event.target.value
-                            }))
-                          }
-                        >
-                          {thinkingOptions.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </Select>
-                        <ChevronDown size={16} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-500" />
-                      </div>
-                      <p className="text-xs leading-5 text-gray-500">
-                        {getThinkingFieldHint(uiLocale)} {selectedThinkingIntensityDescription}
-                      </p>
-                    </div>
-                  </div>
-
-
-
-                  <Button
-                    className="h-12 w-full rounded-xl bg-blue-600 text-white shadow-[0_12px_30px_rgba(37,99,235,0.28)] hover:bg-blue-500"
-                    onClick={handleCreate}
-                    disabled={
-                      isSubmitting ||
-                      form.prompt.trim().length < 10 ||
-                      !savedSettings.providerId ||
-                      !form.model ||
-                      !savedProvider?.connected ||
-                      isConnectionDirty
-                    }
-                  >
-                    {isSubmitting ? (
-                      <LoaderCircle className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      <Lightbulb className="mr-2 h-4 w-4" />
-                    )}
-                    {copy.session.create}
-                  </Button>
+                  <MarkdownContent content={m.message.content} className="text-sm text-gray-200" />
                 </div>
-              </div>
-            </div>
-            <div className="border-t border-gray-800 bg-[#090d1a] px-6 py-4 flex justify-end">
-              <Button variant="secondary" className="bg-gray-800 text-white hover:bg-gray-700" onClick={() => setIsCreateSessionOpen(false)}>
-                닫기
-              </Button>
+              ))}
             </div>
           </div>
         </div>
@@ -2627,4 +1531,3 @@ export function CouncilApp({
     </div>
   );
 }
-

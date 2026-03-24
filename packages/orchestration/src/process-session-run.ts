@@ -9,8 +9,10 @@ import {
   getRunById,
   getSession,
   RUN_STOPPED_BY_USER_MESSAGE,
+  searchRunMessageMemories,
   saveDecisionArtifacts,
   startSessionRun,
+  updateRunDebateState,
   updateRoundSummary,
   type SessionRunRecord
 } from "@ship-council/shared";
@@ -47,12 +49,24 @@ export async function processSessionRun(sessionId: string): Promise<SessionRunRe
           onMessageCreated(message, usage) {
             appendMessageRecord(message, usage);
           },
+          onDebateStateUpdated(state) {
+            updateRunDebateState(run.id, state);
+          },
           onUsage(usage) {
             accumulateRunUsage(run.id, usage);
           },
           onStreamEvent(event) {
             publishRunStreamEvent(event);
           }
+        },
+        retrieveMemories({ query, excludeMessageIds }) {
+          return searchRunMessageMemories({
+            sessionId: session.id,
+            runId: run.id,
+            query,
+            limit: 3,
+            excludeMessageIds
+          });
         }
       });
 
