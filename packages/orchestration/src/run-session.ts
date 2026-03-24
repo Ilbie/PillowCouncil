@@ -610,7 +610,10 @@ export async function runCouncilSession(input: {
     message: summaryMessage,
     usageDelta: {
       promptTokens: 0,
-      completionTokens: 0
+      completionTokens: 0,
+      mcpCalls: 0,
+      skillUses: 0,
+      webSearches: 0
     }
   });
 
@@ -713,7 +716,10 @@ export async function runCouncilSession(input: {
     message: finalMessage,
     usageDelta: {
       promptTokens: 0,
-      completionTokens: 0
+      completionTokens: 0,
+      mcpCalls: 0,
+      skillUses: 0,
+      webSearches: 0
     }
   });
 

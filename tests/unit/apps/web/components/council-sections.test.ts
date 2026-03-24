@@ -44,6 +44,9 @@ const sessionSummary: SessionSummary = {
     completedAt: null,
     errorMessage: null,
     debateState: { agreedPoints: [], activeConflicts: [], pendingQuestions: [] },
+    mcpCalls: 2,
+    skillUses: 1,
+    webSearches: 3,
     totalPromptTokens: 0,
     totalCompletionTokens: 0,
     createdAt: "2026-03-24T00:00:00.000Z",
@@ -76,6 +79,14 @@ const detail: SessionDetailResponse = {
   usage: {
     totalPromptTokens: 10,
     totalCompletionTokens: 5
+  },
+  activityMetrics: {
+    mcpCalls: 2,
+    skillUses: 1,
+    webSearches: 3,
+    inputTokens: 10,
+    outputTokens: 5,
+    workDurationMs: 300000
   }
 };
 
@@ -240,6 +251,30 @@ describe("council sections", () => {
     expect(html).toContain("Support capacity may be tight.");
   });
 
+  it("renders the activity metrics card in the decision sidebar", () => {
+    const html = renderToStaticMarkup(
+      React.createElement(DecisionSidebar, {
+        copy,
+        uiLocale: "en",
+        detail,
+        selectedId: "session-1",
+        isSubmitting: false,
+        isStoppingRun: false,
+        isSelectedSessionRunning: false,
+        onRerun: () => undefined,
+        onStop: () => undefined
+      })
+    );
+
+    expect(html).toContain("Activity Metrics");
+    expect(html).toContain("MCP Calls");
+    expect(html).toContain("Skills Used");
+    expect(html).toContain("Web Searches");
+    expect(html).toContain("Input Tokens");
+    expect(html).toContain("Output Tokens");
+    expect(html).toContain("Work Time");
+  });
+
   it("renders the live workspace panel metrics and activity feed", () => {
     const html = renderToStaticMarkup(
       React.createElement(LiveWorkspacePanel, {
@@ -270,8 +305,8 @@ describe("council sections", () => {
       })
     );
 
-    expect(html).toContain("Live War Room");
-    expect(html).toContain("Test Panel");
+    expect(html).toContain("Panel Activity");
+    expect(html).toContain("Live Feed");
     expect(html).toContain("Launch with a phased rollout.");
   });
 

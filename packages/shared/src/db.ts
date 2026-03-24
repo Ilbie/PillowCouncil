@@ -58,6 +58,9 @@ function createConnection(): Database.Database {
       completed_at TEXT,
       error_message TEXT,
       debate_state TEXT NOT NULL DEFAULT '{"agreedPoints":[],"activeConflicts":[],"pendingQuestions":[]}',
+      mcp_calls INTEGER NOT NULL DEFAULT 0,
+      skill_uses INTEGER NOT NULL DEFAULT 0,
+      web_searches INTEGER NOT NULL DEFAULT 0,
       total_prompt_tokens INTEGER NOT NULL DEFAULT 0,
       total_completion_tokens INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
@@ -274,6 +277,21 @@ function createConnection(): Database.Database {
     db.exec(
       `ALTER TABLE session_runs ADD COLUMN debate_state TEXT NOT NULL DEFAULT '{"agreedPoints":[],"activeConflicts":[],"pendingQuestions":[]}';`
     );
+  }
+  if (!runColumns.some((column) => column.name === "mcp_calls")) {
+    db.exec(`ALTER TABLE session_runs ADD COLUMN mcp_calls INTEGER NOT NULL DEFAULT 0;`);
+  }
+  if (!runColumns.some((column) => column.name === "skill_uses")) {
+    db.exec(`ALTER TABLE session_runs ADD COLUMN skill_uses INTEGER NOT NULL DEFAULT 0;`);
+  }
+  if (!runColumns.some((column) => column.name === "web_searches")) {
+    db.exec(`ALTER TABLE session_runs ADD COLUMN web_searches INTEGER NOT NULL DEFAULT 0;`);
+  }
+  if (!runColumns.some((column) => column.name === "total_prompt_tokens")) {
+    db.exec(`ALTER TABLE session_runs ADD COLUMN total_prompt_tokens INTEGER NOT NULL DEFAULT 0;`);
+  }
+  if (!runColumns.some((column) => column.name === "total_completion_tokens")) {
+    db.exec(`ALTER TABLE session_runs ADD COLUMN total_completion_tokens INTEGER NOT NULL DEFAULT 0;`);
   }
 
   db.exec(`

@@ -10,6 +10,9 @@ import { getOpencodeClient, getOpencodeDirectory } from "./opencode";
 export type ProviderUsage = {
   promptTokens: number;
   completionTokens: number;
+  mcpCalls: number;
+  skillUses: number;
+  webSearches: number;
 };
 
 export type TextGenerationResult = {
@@ -47,15 +50,95 @@ function normalizeUsage(tokens: unknown): ProviderUsage {
   if (!tokens || typeof tokens !== "object") {
     return {
       promptTokens: 0,
-      completionTokens: 0
+      completionTokens: 0,
+      mcpCalls: 0,
+      skillUses: 0,
+      webSearches: 0
     };
   }
 
   const value = tokens as Record<string, unknown>;
   return {
     promptTokens: Number(value.input ?? 0),
-    completionTokens: Number(value.output ?? 0)
+    completionTokens: Number(value.output ?? 0),
+    mcpCalls: 0,
+    skillUses: 0,
+    webSearches: 0
   };
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractActivityUsage(parts: unknown, mcpServerNames: Set<string>): Pick<ProviderUsage, "mcpCalls" | "skillUses" | "webSearches"> {
+  const toolParts = Array.isArray(parts)
+    ? parts.filter(
+        (part): part is { id?: string; callID?: string; type: string; tool?: string; state?: string } =>
+          Boolean(part) &&
+          typeof part === "object" &&
+          "type" in part &&
+          (part as { type?: unknown }).type === "tool"
+      )
+    : [];
+
+  const seenCallIds = new Set<string>();
+  const mcpPatterns = Array.from(mcpServerNames).map((serverName) => new RegExp(`^${escapeRegex(serverName)}(?:[_-].+)?$`));
+  const counts = {
+    mcpCalls: 0,
+    skillUses: 0,
+    webSearches: 0
+  };
+
+  for (const part of toolParts) {
+    const identifier = part.callID ?? part.id;
+    if (!identifier || seenCallIds.has(identifier)) {
+      continue;
+    }
+
+    seenCallIds.add(identifier);
+    const toolName = typeof part.tool === "string" ? part.tool : "";
+    if (!toolName) {
+      continue;
+    }
+
+    if (part.state && part.state !== "completed") {
+      continue;
+    }
+
+    if (toolName === "skill" || toolName.startsWith("skill_")) {
+      counts.skillUses += 1;
+      continue;
+    }
+
+    if (toolName === "websearch" || toolName === "codesearch") {
+      counts.webSearches += 1;
+      continue;
+    }
+
+    if (mcpPatterns.some((pattern) => pattern.test(toolName))) {
+      counts.mcpCalls += 1;
+    }
+  }
+
+  return counts;
+}
+
+async function getConfiguredMcpServerNames(input: {
+  client: Awaited<ReturnType<typeof getOpencodeClient>>;
+  directory: string;
+}): Promise<Set<string>> {
+  const configClient = input.client.config;
+  if (!configClient?.get) {
+    return new Set();
+  }
+
+  const config = await configClient.get({ directory: input.directory });
+  if (config.error || !config.data?.mcp) {
+    return new Set();
+  }
+
+  return new Set(Object.keys(config.data.mcp));
 }
 
 function extractText(parts: Array<{ type: string; text?: string }> | undefined): string {
@@ -164,6 +247,7 @@ async function promptOpenCode<T>(input: {
   const client = await getOpencodeClient();
   const directory = getOpencodeDirectory();
   await syncOpenCodeRuntimeSettings({ client, directory });
+  const mcpServerNames = await getConfiguredMcpServerNames({ client, directory });
   const created = await client.session.create({
     directory,
     title: `Ship Council - ${provider.label}`
@@ -290,7 +374,10 @@ async function promptOpenCode<T>(input: {
       id: result.data.info.id,
       text: extractText(result.data.parts as Array<{ type: string; text?: string }>),
       structured: result.data.info.structured,
-      usage: normalizeUsage(result.data.info.tokens)
+      usage: {
+        ...normalizeUsage(result.data.info.tokens),
+        ...extractActivityUsage(result.data.parts, mcpServerNames)
+      }
     };
   } finally {
     streamClosed = true;
@@ -408,7 +495,10 @@ export class MockCouncilProvider implements CouncilProvider {
       text,
       usage: {
         promptTokens: 100,
-        completionTokens: 70
+        completionTokens: 70,
+        mcpCalls: 0,
+        skillUses: 0,
+        webSearches: 0
       }
     };
   }
@@ -512,7 +602,10 @@ export class MockCouncilProvider implements CouncilProvider {
       raw: JSON.stringify(data, null, 2),
       usage: {
         promptTokens: 120,
-        completionTokens: 90
+        completionTokens: 90,
+        mcpCalls: 0,
+        skillUses: 0,
+        webSearches: 0
       }
     };
   }

@@ -22,6 +22,61 @@ export function getDecisionSectionDescription(locale: UiLocale): string {
   }
 }
 
+export function getActivityMetricsTitle(locale: UiLocale): string {
+  switch (locale) {
+    case "ko":
+      return "활동 지표";
+    case "ja":
+      return "アクティビティ指標";
+    default:
+      return "Activity Metrics";
+  }
+}
+
+export function getActivityMetricLabel(
+  metric: "mcp" | "skills" | "webSearch" | "inputTokens" | "outputTokens" | "workTime",
+  locale: UiLocale
+): string {
+  switch (metric) {
+    case "mcp":
+      switch (locale) {
+        case "ko": return "MCP 호출";
+        case "ja": return "MCP 呼び出し";
+        default: return "MCP Calls";
+      }
+    case "skills":
+      switch (locale) {
+        case "ko": return "스킬 사용";
+        case "ja": return "スキル使用";
+        default: return "Skills Used";
+      }
+    case "webSearch":
+      switch (locale) {
+        case "ko": return "웹 검색";
+        case "ja": return "Web 検索";
+        default: return "Web Searches";
+      }
+    case "inputTokens":
+      switch (locale) {
+        case "ko": return "입력 토큰";
+        case "ja": return "入力トークン";
+        default: return "Input Tokens";
+      }
+    case "outputTokens":
+      switch (locale) {
+        case "ko": return "출력 토큰";
+        case "ja": return "出力トークン";
+        default: return "Output Tokens";
+      }
+    default:
+      switch (locale) {
+        case "ko": return "작업 시간";
+        case "ja": return "作業時間";
+        default: return "Work Time";
+      }
+  }
+}
+
 export function getSessionModelLabel(locale: UiLocale): string {
   switch (locale) {
     case "ko":

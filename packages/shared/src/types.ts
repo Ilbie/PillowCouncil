@@ -275,6 +275,9 @@ export type SessionRunRecord = {
   completedAt: string | null;
   errorMessage: string | null;
   debateState: DebateState;
+  mcpCalls: number;
+  skillUses: number;
+  webSearches: number;
   totalPromptTokens: number;
   totalCompletionTokens: number;
   createdAt: string;
@@ -492,6 +495,38 @@ export type UsageSummary = {
   totalCompletionTokens: number;
 };
 
+export type SessionActivityMetrics = {
+  mcpCalls: number;
+  skillUses: number;
+  webSearches: number;
+  inputTokens: number;
+  outputTokens: number;
+  workDurationMs: number;
+};
+
+export function calculateSessionActivityMetrics(input: {
+  run: SessionRunRecord | null;
+  usage: UsageSummary;
+  currentTime?: string;
+}): SessionActivityMetrics {
+  const endTimestamp = input.run?.completedAt ?? input.currentTime ?? input.run?.updatedAt ?? null;
+  const startTimestamp = input.run?.startedAt ?? input.run?.createdAt ?? null;
+  const startedAtMs = startTimestamp ? Date.parse(startTimestamp) : Number.NaN;
+  const endedAtMs = endTimestamp ? Date.parse(endTimestamp) : Number.NaN;
+  const workDurationMs = Number.isFinite(startedAtMs) && Number.isFinite(endedAtMs)
+    ? Math.max(0, endedAtMs - startedAtMs)
+    : 0;
+
+  return {
+    mcpCalls: input.run?.mcpCalls ?? 0,
+    skillUses: input.run?.skillUses ?? 0,
+    webSearches: input.run?.webSearches ?? 0,
+    inputTokens: input.usage.totalPromptTokens,
+    outputTokens: input.usage.totalCompletionTokens,
+    workDurationMs
+  };
+}
+
 export type SessionSummary = {
   session: SessionRecord;
   run: SessionRunRecord | null;
@@ -504,4 +539,5 @@ export type SessionDetailResponse = {
   decision: DecisionRecord | null;
   todos: TodoRecord[];
   usage: UsageSummary;
+  activityMetrics: SessionActivityMetrics;
 };

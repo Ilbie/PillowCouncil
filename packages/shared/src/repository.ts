@@ -26,6 +26,7 @@ import type {
 } from "./types";
 import {
   agentDefinitionSchema,
+  calculateSessionActivityMetrics,
   createEmptyDebateState,
   debateStateSchema,
   DEBATE_INTENSITY_DEFAULT,
@@ -143,6 +144,9 @@ function mapRun(row: typeof sessionRuns.$inferSelect | undefined): SessionRunRec
     completedAt: row.completedAt,
     errorMessage: row.errorMessage,
     debateState: parseDebateState(row.debateState),
+    mcpCalls: row.mcpCalls,
+    skillUses: row.skillUses,
+    webSearches: row.webSearches,
     totalPromptTokens: row.totalPromptTokens,
     totalCompletionTokens: row.totalCompletionTokens,
     createdAt: row.createdAt,
@@ -373,6 +377,9 @@ export function startSessionRun(sessionId: string): SessionRunRecord {
     completedAt: null,
     errorMessage: null,
     debateState: JSON.stringify(createEmptyDebateState()),
+    mcpCalls: 0,
+    skillUses: 0,
+    webSearches: 0,
     totalPromptTokens: 0,
     totalCompletionTokens: 0,
     createdAt: now,
@@ -399,6 +406,9 @@ export function startSessionRun(sessionId: string): SessionRunRecord {
     completedAt: run.completedAt ?? null,
     errorMessage: run.errorMessage ?? null,
     debateState: run.debateState ?? JSON.stringify(createEmptyDebateState()),
+    mcpCalls: run.mcpCalls ?? 0,
+    skillUses: run.skillUses ?? 0,
+    webSearches: run.webSearches ?? 0,
     totalPromptTokens: run.totalPromptTokens ?? 0,
     totalCompletionTokens: run.totalCompletionTokens ?? 0
   })!;
@@ -491,7 +501,14 @@ export function getSessionDetail(sessionId: string): SessionDetailResponse | nul
       usage: {
         totalPromptTokens: 0,
         totalCompletionTokens: 0
-      }
+      },
+      activityMetrics: calculateSessionActivityMetrics({
+        run: null,
+        usage: {
+          totalPromptTokens: 0,
+          totalCompletionTokens: 0
+        }
+      })
     };
   }
 
@@ -538,16 +555,19 @@ export function getSessionDetail(sessionId: string): SessionDetailResponse | nul
     .all()
     .map(mapTodo);
 
+  const usage = {
+    totalPromptTokens: run.totalPromptTokens,
+    totalCompletionTokens: run.totalCompletionTokens
+  };
+
   return {
     session,
     run,
     rounds: groupedRounds,
     decision: mapDecision(decisionRow),
     todos: todoRows,
-    usage: {
-      totalPromptTokens: run.totalPromptTokens,
-      totalCompletionTokens: run.totalCompletionTokens
-    }
+    usage,
+    activityMetrics: calculateSessionActivityMetrics({ run, usage, currentTime: nowIso() })
   };
 }
 
@@ -673,6 +693,9 @@ export function appendMessageRecord(
   usage?: {
     promptTokens: number;
     completionTokens: number;
+    mcpCalls?: number;
+    skillUses?: number;
+    webSearches?: number;
   }
 ): void {
   const sqlite = getSQLite();
@@ -701,12 +724,23 @@ export function appendMessageRecord(
   sqlite
     .prepare(
       `UPDATE session_runs
-       SET total_prompt_tokens = total_prompt_tokens + ?,
+       SET mcp_calls = mcp_calls + ?,
+           skill_uses = skill_uses + ?,
+           web_searches = web_searches + ?,
+           total_prompt_tokens = total_prompt_tokens + ?,
            total_completion_tokens = total_completion_tokens + ?,
            updated_at = ?
-       WHERE id = ?`
+        WHERE id = ?`
     )
-    .run(usage?.promptTokens ?? 0, usage?.completionTokens ?? 0, now, message.runId);
+    .run(
+      usage?.mcpCalls ?? 0,
+      usage?.skillUses ?? 0,
+      usage?.webSearches ?? 0,
+      usage?.promptTokens ?? 0,
+      usage?.completionTokens ?? 0,
+      now,
+      message.runId
+    );
 }
 
 export function accumulateRunUsage(
@@ -714,6 +748,9 @@ export function accumulateRunUsage(
   usage: {
     promptTokens: number;
     completionTokens: number;
+    mcpCalls?: number;
+    skillUses?: number;
+    webSearches?: number;
   }
 ): void {
   const sqlite = getSQLite();
@@ -722,12 +759,23 @@ export function accumulateRunUsage(
   sqlite
     .prepare(
       `UPDATE session_runs
-       SET total_prompt_tokens = total_prompt_tokens + ?,
+       SET mcp_calls = mcp_calls + ?,
+           skill_uses = skill_uses + ?,
+           web_searches = web_searches + ?,
+           total_prompt_tokens = total_prompt_tokens + ?,
            total_completion_tokens = total_completion_tokens + ?,
            updated_at = ?
-       WHERE id = ?`
+        WHERE id = ?`
     )
-    .run(usage.promptTokens, usage.completionTokens, now, runId);
+    .run(
+      usage.mcpCalls ?? 0,
+      usage.skillUses ?? 0,
+      usage.webSearches ?? 0,
+      usage.promptTokens,
+      usage.completionTokens,
+      now,
+      runId
+    );
 }
 
 export function updateRoundSummary(roundId: string, summary: string | null): void {
