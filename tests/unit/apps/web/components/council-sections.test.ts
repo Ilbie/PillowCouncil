@@ -251,7 +251,7 @@ describe("council sections", () => {
     expect(html).toContain("Support capacity may be tight.");
   });
 
-  it("renders the activity metrics card in the decision sidebar", () => {
+  it("does not render the activity metrics card in the decision sidebar", () => {
     const html = renderToStaticMarkup(
       React.createElement(DecisionSidebar, {
         copy,
@@ -266,16 +266,16 @@ describe("council sections", () => {
       })
     );
 
-    expect(html).toContain("Activity Metrics");
-    expect(html).toContain("MCP Calls");
-    expect(html).toContain("Skills Used");
-    expect(html).toContain("Web Searches");
-    expect(html).toContain("Input Tokens");
-    expect(html).toContain("Output Tokens");
-    expect(html).toContain("Work Time");
+    expect(html).not.toContain("Activity Metrics");
+    expect(html).not.toContain("MCP Calls");
+    expect(html).not.toContain("Skills Used");
+    expect(html).not.toContain("Web Searches");
+    expect(html).not.toContain("Input Tokens");
+    expect(html).not.toContain("Output Tokens");
+    expect(html).not.toContain("Work Time");
   });
 
-  it("renders the live workspace panel metrics and activity feed", () => {
+  it("renders the activity metrics card in the live workspace panel", () => {
     const html = renderToStaticMarkup(
       React.createElement(LiveWorkspacePanel, {
         copy,
@@ -305,9 +305,25 @@ describe("council sections", () => {
       })
     );
 
+    const activityMetricsIndex = html.indexOf("Activity Metrics");
+    const workspaceDescriptionIndex = html.indexOf("Track the current stage, latest update, and panel momentum even before the first round lands.");
+    const panelActivityIndex = html.indexOf("Panel Activity");
+    const liveFeedIndex = html.indexOf("Live Feed");
+
+    expect(html).toContain("Activity Metrics");
+    expect(html).toContain("MCP Calls");
+    expect(html).toContain("Skills Used");
+    expect(html).toContain("Web Searches");
+    expect(html).toContain("Input Tokens");
+    expect(html).toContain("Output Tokens");
+    expect(html).toContain("Work Time");
     expect(html).toContain("Panel Activity");
     expect(html).toContain("Live Feed");
     expect(html).toContain("Launch with a phased rollout.");
+    expect(workspaceDescriptionIndex).toBeGreaterThanOrEqual(0);
+    expect(activityMetricsIndex).toBeLessThan(workspaceDescriptionIndex);
+    expect(panelActivityIndex).toBeGreaterThan(workspaceDescriptionIndex);
+    expect(liveFeedIndex).toBeGreaterThan(activityMetricsIndex);
   });
 
   it("renders the settings modal tabs and preset studio shell", () => {

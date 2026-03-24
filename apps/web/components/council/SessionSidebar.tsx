@@ -37,7 +37,7 @@ export const SessionSidebar: FC<SessionSidebarProps> = ({
             onClick={onOpenCreateSession}
           >
             <Lightbulb size={16} className="mr-2" />
-            {copy.session.title} (새로운 추가)
+            {copy.session.title}
           </Button>
         </div>
 

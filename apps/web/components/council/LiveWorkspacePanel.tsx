@@ -19,6 +19,7 @@ import {
 import { cn } from "@/lib/utils";
 import { getMessageKindLabel, getRoundStageLabel, getStatusLabel, type UiLocale, getUiCopy } from "@/lib/i18n";
 import { Badge } from "@/components/ui/badge";
+import { SessionActivityMetricsCard } from "@/components/council/SessionActivityMetricsCard";
 import type { PresetDefinition, SessionDetailResponse } from "@ship-council/shared";
 
 type LiveWorkspacePanelProps = {
@@ -66,6 +67,12 @@ export const LiveWorkspacePanel: FC<LiveWorkspacePanelProps> = ({
     <div className="mb-6 flex flex-1 min-h-0 flex-col gap-4">
       <div className="flex flex-1 min-h-0 gap-4">
         <div className="flex w-[60%] min-w-[420px] max-w-[80%] flex-col gap-4 overflow-hidden">
+          <SessionActivityMetricsCard
+            detail={detail}
+            uiLocale={uiLocale}
+            className="rounded-[28px] border border-white/10 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.14),_rgba(2,6,23,0.94)_68%)] p-5 shadow-[0_18px_45px_rgba(2,6,23,0.28)]"
+          />
+
           <div className="council-scrollbar h-fit shrink-0 overflow-y-auto rounded-3xl border border-blue-500/10 bg-[radial-gradient(circle_at_top_left,_rgba(59,130,246,0.12),_rgba(8,15,28,0.92)_70%)] px-5 py-3 shadow-[0_15px_50px_rgba(2,6,23,0.3)]">
             <div className="flex items-center justify-between gap-4">
               <h3 className="text-sm font-bold text-white shrink-0">
@@ -219,48 +226,50 @@ export const LiveWorkspacePanel: FC<LiveWorkspacePanelProps> = ({
           </div>
         </div>
 
-        <div className="council-scrollbar min-w-0 flex-1 overflow-y-auto rounded-[28px] border border-gray-800 bg-gray-950/75 p-5">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400">{getActivityFeedLabel(uiLocale)}</p>
-              <h3 className="mt-2 text-lg font-semibold text-white">{copy.detail.live}</h3>
-            </div>
-            <Badge className="border-gray-700 bg-gray-900 text-gray-300">
-              {latestFeedMessage ? latestFeedMessage.kind : getStageStatusLabel("active", uiLocale)}
-            </Badge>
-          </div>
-
-          <div className="mt-4 space-y-3">
-            {activityFeedWithKeys.map(({ entry, key }) => (
-              <div
-                key={key}
-                onClick={() => entry.type === "message" && onSelectMessage(entry.id)}
-                className={cn(
-                  "rounded-[20px] border border-gray-800 bg-gray-900/80 px-4 py-4",
-                  entry.type === "message" && "group cursor-pointer transition hover:border-gray-700 hover:bg-gray-800/60"
-                )}
-              >
-                {entry.type === "message" ? (
-                  <>
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-sm font-semibold text-gray-100">{entry.agentName}</p>
-                      <Badge className={cn("border-gray-700 bg-gray-800 text-gray-300", entry.isStreaming && "border-blue-400/20 bg-blue-500/10 text-blue-200")}>
-                        {entry.isStreaming ? `${getRoundStageLabel(entry.stage, uiLocale)} · Live` : getRoundStageLabel(entry.stage, uiLocale)}
-                      </Badge>
-                    </div>
-                    <p className="mt-2 line-clamp-3 text-sm leading-6 text-gray-300 transition-colors group-hover:text-gray-200">{entry.label}</p>
-                    <div className="mt-2 flex items-center justify-between">
-                      <p className="text-xs text-gray-500">{getMessageKindLabel(entry.kind, uiLocale)}</p>
-                      <span className="flex items-center gap-1 text-xs text-blue-400 opacity-0 transition-opacity group-hover:opacity-100">
-                        상세 보기
-                      </span>
-                    </div>
-                  </>
-                ) : (
-                  <p className="text-sm leading-6 text-gray-400">{getWaitingFeedLabel(uiLocale, entry.stage)}</p>
-                )}
+        <div className="min-w-0 flex-1 flex flex-col gap-4 overflow-hidden">
+          <div className="council-scrollbar min-w-0 flex-1 overflow-y-auto rounded-[28px] border border-gray-800 bg-gray-950/75 p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400">{getActivityFeedLabel(uiLocale)}</p>
+                <h3 className="mt-2 text-lg font-semibold text-white">{copy.detail.live}</h3>
               </div>
-            ))}
+              <Badge className="border-gray-700 bg-gray-900 text-gray-300">
+                {latestFeedMessage ? latestFeedMessage.kind : getStageStatusLabel("active", uiLocale)}
+              </Badge>
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {activityFeedWithKeys.map(({ entry, key }) => (
+                <div
+                  key={key}
+                  onClick={() => entry.type === "message" && onSelectMessage(entry.id)}
+                  className={cn(
+                    "rounded-[20px] border border-gray-800 bg-gray-900/80 px-4 py-4",
+                    entry.type === "message" && "group cursor-pointer transition hover:border-gray-700 hover:bg-gray-800/60"
+                  )}
+                >
+                  {entry.type === "message" ? (
+                    <>
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-sm font-semibold text-gray-100">{entry.agentName}</p>
+                        <Badge className={cn("border-gray-700 bg-gray-800 text-gray-300", entry.isStreaming && "border-blue-400/20 bg-blue-500/10 text-blue-200")}>
+                          {entry.isStreaming ? `${getRoundStageLabel(entry.stage, uiLocale)} · Live` : getRoundStageLabel(entry.stage, uiLocale)}
+                        </Badge>
+                      </div>
+                      <p className="mt-2 line-clamp-3 text-sm leading-6 text-gray-300 transition-colors group-hover:text-gray-200">{entry.label}</p>
+                      <div className="mt-2 flex items-center justify-between">
+                        <p className="text-xs text-gray-500">{getMessageKindLabel(entry.kind, uiLocale)}</p>
+                        <span className="flex items-center gap-1 text-xs text-blue-400 opacity-0 transition-opacity group-hover:opacity-100">
+                          상세 보기
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-sm leading-6 text-gray-400">{getWaitingFeedLabel(uiLocale, entry.stage)}</p>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>

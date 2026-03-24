@@ -114,7 +114,15 @@ const COPY = {
       finalSummary: "최종 요약",
       todo: "TODO",
       status: "상태",
-      updated: "업데이트"
+      updated: "업데이트",
+      metrics: {
+        title: "실행 지표",
+        mcpCalls: "MCP 호출",
+        skillUses: "스킬 사용",
+        webSearches: "웹 검색",
+        tokens: "토큰",
+        duration: "소요 시간"
+      }
     },
     decisionSections: {
       alternatives: "대안",
@@ -250,7 +258,15 @@ const COPY = {
       finalSummary: "Final Summary",
       todo: "TODO",
       status: "Status",
-      updated: "Updated"
+      updated: "Updated",
+      metrics: {
+        title: "Activity Metrics",
+        mcpCalls: "MCP Calls",
+        skillUses: "Skill Uses",
+        webSearches: "Web Searches",
+        tokens: "Tokens",
+        duration: "Duration"
+      }
     },
     decisionSections: {
       alternatives: "Alternatives",
@@ -386,7 +402,15 @@ const COPY = {
       finalSummary: "最終要約",
       todo: "TODO",
       status: "状態",
-      updated: "更新"
+      updated: "更新",
+      metrics: {
+        title: "実行指標",
+        mcpCalls: "MCP 呼び出し",
+        skillUses: "スキル使用",
+        webSearches: "ウェブ検索",
+        tokens: "トークン",
+        duration: "所要時間"
+      }
     },
     decisionSections: {
       alternatives: "代替案",
