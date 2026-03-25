@@ -1,5 +1,5 @@
 import type { FC } from "react";
-import { AlertTriangle, CheckCircle2, Clock, Cpu, Download, FileText, Info, RefreshCcw, Search, Sparkles, Zap } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Download, FileText, Info, RefreshCcw, Sparkles } from "lucide-react";
 
 import type { SessionDetailResponse } from "@ship-council/shared";
 
@@ -109,55 +109,6 @@ export const DecisionSidebar: FC<DecisionSidebarProps> = ({
                     </li>
                   ))}
                 </ul>
-              </section>
-            ) : null}
-
-            {detail?.activityMetrics ? (
-              <section className="mb-8 space-y-4">
-                <h3 className="text-sm font-bold text-gray-400 flex items-center gap-2">
-                  <Sparkles size={16} className="text-blue-400" />
-                  {copy.decision.metrics.title}
-                </h3>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-gray-800/40 border border-gray-700/30 rounded-xl p-3 flex flex-col gap-1">
-                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                      <Zap size={12} className="text-yellow-500" />
-                      {copy.decision.metrics.tokens}
-                    </div>
-                    <div className="text-sm font-semibold text-gray-200">
-                      {(detail.activityMetrics.inputTokens + detail.activityMetrics.outputTokens).toLocaleString()}
-                    </div>
-                  </div>
-                  <div className="bg-gray-800/40 border border-gray-700/30 rounded-xl p-3 flex flex-col gap-1">
-                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                      <Clock size={12} className="text-blue-400" />
-                      {copy.decision.metrics.duration}
-                    </div>
-                    <div className="text-sm font-semibold text-gray-200">
-                      {detail.activityMetrics.workDurationMs > 60000
-                        ? `${(detail.activityMetrics.workDurationMs / 60000).toFixed(1)}m`
-                        : `${(detail.activityMetrics.workDurationMs / 1000).toFixed(0)}s`}
-                    </div>
-                  </div>
-                  <div className="bg-gray-800/40 border border-gray-700/30 rounded-xl p-3 flex flex-col gap-1">
-                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                      <Search size={12} className="text-cyan-400" />
-                      {copy.decision.metrics.webSearches}
-                    </div>
-                    <div className="text-sm font-semibold text-gray-200">
-                      {detail.activityMetrics.webSearches}
-                    </div>
-                  </div>
-                  <div className="bg-gray-800/40 border border-gray-700/30 rounded-xl p-3 flex flex-col gap-1">
-                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                      <Cpu size={12} className="text-purple-400" />
-                      {copy.decision.metrics.skillUses}
-                    </div>
-                    <div className="text-sm font-semibold text-gray-200">
-                      {detail.activityMetrics.skillUses + detail.activityMetrics.mcpCalls}
-                    </div>
-                  </div>
-                </div>
               </section>
             ) : null}
 

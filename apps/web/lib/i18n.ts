@@ -92,7 +92,12 @@ const COPY = {
     sessions: {
       title: "세션 목록",
       description: "저장된 세션을 확인하고 다시 실행할 수 있습니다.",
-      empty: "아직 세션이 없습니다."
+      empty: "아직 세션이 없습니다.",
+      confirmDelete: "이 세션 기록을 삭제할까요?",
+      loadMore: "더 보기",
+      loadingMore: "더 불러오는 중...",
+      delete: "삭제",
+      deleting: "삭제 중..."
     },
     detail: {
       emptyTitle: "세션을 선택하세요",
@@ -236,7 +241,12 @@ const COPY = {
     sessions: {
       title: "Sessions",
       description: "Browse saved sessions and reopen any previous run.",
-      empty: "No sessions yet."
+      empty: "No sessions yet.",
+      confirmDelete: "Delete this session history?",
+      loadMore: "Load more",
+      loadingMore: "Loading more...",
+      delete: "Delete",
+      deleting: "Deleting..."
     },
     detail: {
       emptyTitle: "Select a session",
@@ -380,7 +390,12 @@ const COPY = {
     sessions: {
       title: "セッション一覧",
       description: "保存済みセッションを確認し、再実行できます。",
-      empty: "まだセッションがありません。"
+      empty: "まだセッションがありません。",
+      confirmDelete: "このセッション履歴を削除しますか？",
+      loadMore: "さらに表示",
+      loadingMore: "読み込み中...",
+      delete: "削除",
+      deleting: "削除中..."
     },
     detail: {
       emptyTitle: "セッションを選択してください",

@@ -1,4 +1,4 @@
-import type { LiveMessageRecord, PresetDefinition, SessionCreateInput, SessionLanguage } from "@ship-council/shared";
+import type { LiveMessageRecord, PresetDefinition, SessionCreateInput, SessionLanguage, SessionListResponse } from "@ship-council/shared";
 import type { McpSettingsState, SkillsSettingsState } from "@ship-council/providers";
 
 import type { ProviderOauthPendingState } from "@/lib/provider-auth";
@@ -18,6 +18,7 @@ export type GeneratedPresetInputs = {
   agentCount: number;
   language: SessionLanguage;
   model: string;
+  providerId: string;
 };
 
 export type PendingOauthState = ProviderOauthPendingState;
@@ -35,3 +36,7 @@ export type RunRouteResponse = {
 };
 
 export type LiveMessageMap = Record<string, LiveMessageRecord>;
+
+export const SESSION_HISTORY_PAGE_SIZE = 12;
+
+export type SessionHistoryListResponse = SessionListResponse;

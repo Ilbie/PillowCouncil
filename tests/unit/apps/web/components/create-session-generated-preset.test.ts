@@ -12,7 +12,7 @@ const englishLanguageOption = {
   description: copy.languages.en.description
 };
 
-function renderModal(supportsWebSearch: boolean): string {
+function renderModal() {
   return renderToStaticMarkup(
     React.createElement(CreateSessionModal, {
       copy,
@@ -20,17 +20,25 @@ function renderModal(supportsWebSearch: boolean): string {
       isOpen: true,
       form: {
         title: "",
-        prompt: "Evaluate whether we should expand the launch.",
-        presetId: "saas-founder",
+        prompt: "Evaluate whether this generated preset should stay selected.",
+        presetId: "custom:saas-founder",
         model: "gpt-4.1",
         thinkingIntensity: "balanced",
         debateIntensity: 2,
         language: "en",
         enableWebSearch: false
       },
-      availablePresets: [{ id: "saas-founder", name: "SaaS Founder", description: "desc", agents: [] }],
+      availablePresets: [
+        { id: "saas-founder", name: "SaaS Founder", description: "desc", agents: [] },
+        { id: "product-scope", name: "Product Scope", description: "desc", agents: [] }
+      ],
       activePreset: null,
-      generatedPreset: null,
+      generatedPreset: {
+        id: "custom:saas-founder",
+        name: "SaaS Founder",
+        description: "Generated desc",
+        agents: []
+      },
       savedProvider: {
         id: "openai",
         label: "OpenAI",
@@ -67,16 +75,18 @@ function renderModal(supportsWebSearch: boolean): string {
         description: "Tool calling, web search",
         supportsStructuredOutput: true,
         supportsToolCall: true,
-        supportsWebSearch
+        supportsWebSearch: true
       },
-      sessionModelOptions: [{
-        id: "gpt-4.1",
-        label: "GPT-4.1",
-        description: "Tool calling, web search",
-        supportsStructuredOutput: true,
-        supportsToolCall: true,
-        supportsWebSearch
-      }],
+      sessionModelOptions: [
+        {
+          id: "gpt-4.1",
+          label: "GPT-4.1",
+          description: "Tool calling, web search",
+          supportsStructuredOutput: true,
+          supportsToolCall: true,
+          supportsWebSearch: true
+        }
+      ],
       sessionLanguageOptions: [englishLanguageOption],
       thinkingOptions: [{ value: "balanced", label: "Balanced", description: "Balanced" }],
       isConnectionDirty: false,
@@ -90,17 +100,11 @@ function renderModal(supportsWebSearch: boolean): string {
   );
 }
 
-describe("CreateSessionModal web search toggle", () => {
-  it("renders the web search toggle for supported models", () => {
-    const markup = renderModal(true);
+describe("CreateSessionModal generated preset selection", () => {
+  it("keeps the generated preset in the dropdown options when selected", () => {
+    const markup = renderModal();
 
-    expect(markup).toContain("Web search");
-    expect(markup).toContain('type="checkbox"');
-  });
-
-  it("hides the web search toggle for unsupported models", () => {
-    const markup = renderModal(false);
-
-    expect(markup).not.toContain("Web search");
+    expect(markup).toContain('option value="custom:saas-founder"');
+    expect(markup).toContain("SaaS Founder");
   });
 });

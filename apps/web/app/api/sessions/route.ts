@@ -1,15 +1,37 @@
 import { CUSTOM_PRESET_ID_PREFIX, getPresetDefinition } from "@ship-council/agents";
 import { getProviderOption, loadProviderCatalog } from "@ship-council/providers";
-import { createSession, listSessions, sessionCreateInputSchema } from "@ship-council/shared";
+import { countSessions, createSession, listSessions, sessionCreateInputSchema } from "@ship-council/shared";
 import { getModelThinkingOptions } from "@ship-council/shared/types";
 
 import { RouteError, withErrorHandler } from "@/app/api/_utils";
 
 export const runtime = "nodejs";
 
-export async function GET() {
-  return Response.json(listSessions());
+function parsePaginationParam(value: string | null, fallback: number, options: { min: number; max: number }): number {
+  if (value === null) {
+    return fallback;
+  }
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    throw new RouteError(400, "Pagination values must be numbers");
+  }
+
+  return Math.min(options.max, Math.max(options.min, Math.trunc(parsed)));
 }
+
+export const GET = withErrorHandler(async (request: Request) => {
+  const { searchParams } = new URL(request.url);
+  const limit = parsePaginationParam(searchParams.get("limit"), 12, { min: 1, max: 100 });
+  const offset = parsePaginationParam(searchParams.get("offset"), 0, { min: 0, max: Number.MAX_SAFE_INTEGER });
+
+  return Response.json({
+    items: listSessions({ limit, offset }),
+    totalCount: countSessions(),
+    limit,
+    offset
+  });
+}, { fallbackMessage: "Failed to load sessions" });
 
 export const POST = withErrorHandler(async (request: Request) => {
   const body = await request.json();

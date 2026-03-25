@@ -71,14 +71,33 @@ function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+type ToolActivityPart = {
+  id?: string;
+  callID?: string;
+  type: string;
+  tool?: string;
+  state?: unknown;
+};
+
+function getToolPartStateStatus(state: unknown): string | null {
+  if (typeof state === "string") {
+    return state;
+  }
+
+  if (state && typeof state === "object" && "status" in state) {
+    const status = (state as { status?: unknown }).status;
+    return typeof status === "string" ? status : null;
+  }
+
+  return null;
+}
+
+const STREAM_DRAIN_TIMEOUT_MS = 100;
+
 function extractActivityUsage(parts: unknown, mcpServerNames: Set<string>): Pick<ProviderUsage, "mcpCalls" | "skillUses" | "webSearches"> {
   const toolParts = Array.isArray(parts)
     ? parts.filter(
-        (part): part is { id?: string; callID?: string; type: string; tool?: string; state?: string } =>
-          Boolean(part) &&
-          typeof part === "object" &&
-          "type" in part &&
-          (part as { type?: unknown }).type === "tool"
+        (part): part is ToolActivityPart => Boolean(part) && typeof part === "object" && "type" in part && (part as { type?: unknown }).type === "tool"
       )
     : [];
 
@@ -91,18 +110,21 @@ function extractActivityUsage(parts: unknown, mcpServerNames: Set<string>): Pick
   };
 
   for (const part of toolParts) {
-    const identifier = part.callID ?? part.id;
-    if (!identifier || seenCallIds.has(identifier)) {
+    const identifiers = [part.callID, part.id].filter((value): value is string => typeof value === "string" && value.length > 0);
+    if (identifiers.length === 0 || identifiers.some((identifier) => seenCallIds.has(identifier))) {
       continue;
     }
 
-    seenCallIds.add(identifier);
+    for (const identifier of identifiers) {
+      seenCallIds.add(identifier);
+    }
     const toolName = typeof part.tool === "string" ? part.tool : "";
     if (!toolName) {
       continue;
     }
 
-    if (part.state && part.state !== "completed") {
+    const stateStatus = getToolPartStateStatus(part.state);
+    if (stateStatus && stateStatus !== "completed") {
       continue;
     }
 
@@ -127,18 +149,96 @@ function extractActivityUsage(parts: unknown, mcpServerNames: Set<string>): Pick
 async function getConfiguredMcpServerNames(input: {
   client: Awaited<ReturnType<typeof getOpencodeClient>>;
   directory: string;
+  globalEnabled: boolean;
 }): Promise<Set<string>> {
-  const configClient = input.client.config;
-  if (!configClient?.get) {
+  if (!input.globalEnabled) {
     return new Set();
   }
 
-  const config = await configClient.get({ directory: input.directory });
-  if (config.error || !config.data?.mcp) {
+  const mcpClient = input.client.mcp;
+  if (!mcpClient?.status) {
     return new Set();
   }
 
-  return new Set(Object.keys(config.data.mcp));
+  const status = await mcpClient.status({ directory: input.directory });
+  if (status.error || !status.data) {
+    return new Set();
+  }
+
+  return new Set(
+    Object.entries(status.data)
+      .filter(([, server]) => server.status === "connected")
+      .map(([serverName]) => serverName)
+  );
+}
+
+async function getAvailableSkillNames(input: {
+  client: Awaited<ReturnType<typeof getOpencodeClient>>;
+  directory: string;
+  globalEnabled: boolean;
+}): Promise<string[]> {
+  if (!input.globalEnabled) {
+    return [];
+  }
+
+  const appClient = input.client.app;
+  if (!appClient?.skills) {
+    return [];
+  }
+
+  const result = await appClient.skills({ directory: input.directory });
+  if (result.error || !result.data) {
+    return [];
+  }
+
+  return result.data.map((skill) => skill.name).filter((name): name is string => Boolean(name));
+}
+
+function buildWebSearchInstruction(input: { structured: boolean }): string {
+  const guidance = [
+    "Use web search when the answer depends on current events, rapidly changing facts, market conditions, policy updates, or external evidence not already present in the prompt.",
+    "Do not search for static reasoning tasks or information already provided in the conversation.",
+    input.structured
+      ? "If fresh external information would improve the JSON result, call web search before finalizing the answer."
+      : "If fresh external information would materially improve accuracy, call web search before finalizing the answer."
+  ];
+
+  if (input.structured) {
+    guidance.push("Return exactly one structured JSON object.");
+  }
+
+  return guidance.join(" ");
+}
+
+function buildToolUsageInstruction(input: {
+  structured: boolean;
+  enableWebSearch: boolean;
+  mcpServerNames: Set<string>;
+  skillNames: string[];
+}): string | null {
+  const guidance: string[] = [];
+
+  if (input.mcpServerNames.size > 0) {
+    guidance.push(`Available MCP servers: ${[...input.mcpServerNames].join(", ")}. Use an MCP server when specialized docs, APIs, or resources from that server are directly relevant.`);
+  }
+
+  if (input.skillNames.length > 0) {
+    guidance.push(`Available skills: ${input.skillNames.join(", ")}. Load a skill when the task matches its domain expertise or workflow.`);
+  }
+
+  if (input.enableWebSearch) {
+    guidance.push(buildWebSearchInstruction({ structured: input.structured }));
+  }
+
+  if (guidance.length === 0) {
+    return null;
+  }
+
+  if (input.structured && !input.enableWebSearch) {
+    guidance.push("Return exactly one structured JSON object.");
+  }
+
+  return guidance.join(" ");
 }
 
 function extractText(parts: Array<{ type: string; text?: string }> | undefined): string {
@@ -246,8 +346,10 @@ async function promptOpenCode<T>(input: {
 
   const client = await getOpencodeClient();
   const directory = getOpencodeDirectory();
-  await syncOpenCodeRuntimeSettings({ client, directory });
-  const mcpServerNames = await getConfiguredMcpServerNames({ client, directory });
+  const settings = getSafeAppSettings();
+  await syncOpenCodeRuntimeSettings({ client, directory, settings });
+  const mcpServerNames = await getConfiguredMcpServerNames({ client, directory, globalEnabled: settings.enableMcp });
+  const skillNames = await getAvailableSkillNames({ client, directory, globalEnabled: settings.enableSkills });
   const created = await client.session.create({
     directory,
     title: `Ship Council - ${provider.label}`
@@ -259,10 +361,19 @@ async function promptOpenCode<T>(input: {
 
   const sessionId = created.data.id;
   const shouldStream = Boolean(input.onTextDelta || input.onReasoningDelta);
+  const shouldSubscribe = Boolean(client.event?.subscribe);
   let streamClosed = false;
+  let promptCompleted = false;
   let streamPromise: Promise<void> | null = null;
+  let closeActiveEventStream: (() => Promise<void>) | undefined;
 
   try {
+    const toolUsageInstruction = buildToolUsageInstruction({
+      structured: Boolean(input.schema),
+      enableWebSearch: Boolean(input.enableWebSearch),
+      mcpServerNames,
+      skillNames
+    });
     const partSnapshots = new Map<string, string>();
     const partTypes = new Map<string, "text" | "reasoning">();
 
@@ -284,9 +395,13 @@ async function promptOpenCode<T>(input: {
       await input.onReasoningDelta?.(delta, nextSnapshot);
     };
 
-    streamPromise = shouldStream
+    const streamedToolParts = new Map<string, ToolActivityPart>();
+    streamPromise = shouldSubscribe
       ? (async () => {
           const events = await client.event.subscribe({ directory });
+          closeActiveEventStream = async () => {
+            await events.stream.return?.(undefined);
+          };
 
           try {
             for await (const event of events.stream) {
@@ -296,7 +411,23 @@ async function promptOpenCode<T>(input: {
 
               if (event.type === "message.part.updated") {
                 const part = event.properties.part;
-                if (part.sessionID !== sessionId || (part.type !== "text" && part.type !== "reasoning")) {
+                if (part.sessionID !== sessionId) {
+                  continue;
+                }
+
+                if (part.type === "tool") {
+                  const identifier = typeof part.callID === "string" ? part.callID : part.id;
+                  if (identifier) {
+                    streamedToolParts.set(identifier, part as ToolActivityPart);
+                  }
+                  continue;
+                }
+
+                if (part.type === "step-finish" && promptCompleted) {
+                  break;
+                }
+
+                if (!shouldStream || (part.type !== "text" && part.type !== "reasoning")) {
                   continue;
                 }
 
@@ -305,6 +436,10 @@ async function promptOpenCode<T>(input: {
               }
 
               if (event.type === "message.part.delta") {
+                if (!shouldStream) {
+                  continue;
+                }
+
                 const properties = event.properties;
                 if (properties.sessionID !== sessionId || properties.field !== "text") {
                   continue;
@@ -321,6 +456,7 @@ async function promptOpenCode<T>(input: {
             }
           } finally {
             streamClosed = true;
+            closeActiveEventStream = undefined;
             await events.stream.return?.(undefined);
           }
         })()
@@ -334,7 +470,7 @@ async function promptOpenCode<T>(input: {
         modelID: input.model
       },
       variant: selectedVariant,
-      system: input.system,
+      system: toolUsageInstruction ? `${input.system}\n${toolUsageInstruction}` : input.system,
       format: input.schema
         ? {
             type: "json_schema",
@@ -358,8 +494,22 @@ async function promptOpenCode<T>(input: {
       throw new Error("OpenCode failed to generate a response");
     }
 
-    streamClosed = true;
-    await streamPromise?.catch(() => undefined);
+    promptCompleted = true;
+    const drainResult = streamPromise
+      ? await Promise.race<"drained" | "timeout">([
+          streamPromise.then<"drained">(() => "drained").catch<"drained">(() => "drained"),
+          new Promise((resolve) => {
+            setTimeout(() => resolve("timeout"), STREAM_DRAIN_TIMEOUT_MS);
+          })
+        ])
+      : "drained";
+
+    if (drainResult === "timeout") {
+      streamClosed = true;
+      const closeEventStream = closeActiveEventStream;
+      await closeEventStream?.().catch(() => undefined);
+      await streamPromise?.catch(() => undefined);
+    }
 
     if (result.data.info.error) {
       const error = result.data.info.error;
@@ -376,11 +526,13 @@ async function promptOpenCode<T>(input: {
       structured: result.data.info.structured,
       usage: {
         ...normalizeUsage(result.data.info.tokens),
-        ...extractActivityUsage(result.data.parts, mcpServerNames)
+        ...extractActivityUsage([...streamedToolParts.values(), ...(Array.isArray(result.data.parts) ? result.data.parts : [])], mcpServerNames)
       }
     };
   } finally {
     streamClosed = true;
+    const closeEventStream = closeActiveEventStream;
+    await closeEventStream?.().catch(() => undefined);
     await streamPromise?.catch(() => undefined);
     await client.session.delete({ sessionID: sessionId, directory }).catch(() => undefined);
   }
@@ -404,9 +556,7 @@ export class OpenCodeCouncilProvider implements CouncilProvider {
       provider: input.provider,
       model: input.model,
       variant: input.variant,
-      system: input.enableWebSearch
-        ? `${input.system}\nUse web search only when it materially improves accuracy.`
-        : `${input.system}\nDo not use tools. Respond with plain text only.`,
+      system: input.system,
       prompt: input.prompt,
       enableWebSearch: input.enableWebSearch,
       onTextDelta: input.onTextDelta,
@@ -437,9 +587,7 @@ export class OpenCodeCouncilProvider implements CouncilProvider {
       provider: input.provider,
       model: input.model,
       variant: input.variant,
-      system: input.enableWebSearch
-        ? `${input.system}\nUse web search only when it materially improves accuracy. Return exactly one structured JSON object.`
-        : `${input.system}\nReturn exactly one structured JSON object.`,
+      system: input.enableWebSearch ? input.system : `${input.system}\nReturn exactly one structured JSON object.`,
       prompt: input.prompt,
       enableWebSearch: input.enableWebSearch,
       schema: input.schema,

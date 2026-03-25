@@ -32,6 +32,15 @@ export const appSettings = sqliteTable("app_settings", {
   updatedAt: text("updated_at").notNull()
 });
 
+export const savedPresets = sqliteTable("saved_presets", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  agents: text("agents").notNull(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull()
+});
+
 export const sessionRuns = sqliteTable("session_runs", {
   id: text("id").primaryKey(),
   sessionId: text("session_id").notNull(),

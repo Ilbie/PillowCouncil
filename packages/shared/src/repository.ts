@@ -1,7 +1,7 @@
 import { and, asc, desc, eq, inArray } from "drizzle-orm";
 
 import { getDb, getSQLite } from "./db";
-import { appSettings, decisions, messages, rounds, sessionRuns, sessions, todos } from "./schema";
+import { appSettings, decisions, messages, rounds, savedPresets, sessionRuns, sessions, todos } from "./schema";
 import type {
   AgentDefinition,
   AppSettings,
@@ -16,6 +16,7 @@ import type {
   RunStage,
   SessionCreateInput,
   SessionDetailResponse,
+  SessionListQuery,
   SessionLanguage,
   SessionRecord,
   SessionRunRecord,
@@ -127,6 +128,15 @@ function parseCustomPreset(input: {
 
 function serializeCustomPresetAgents(agents: AgentDefinition[]): string {
   return JSON.stringify(agents);
+}
+
+function mapSavedPreset(row: typeof savedPresets.$inferSelect): PresetDefinition | null {
+  return parseCustomPreset({
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    agents: row.agents
+  });
 }
 
 function mapRun(row: typeof sessionRuns.$inferSelect | undefined): SessionRunRecord | null {
@@ -309,6 +319,40 @@ export function saveConnectionSettings(input: Pick<AppSettings, "providerId" | "
   });
 }
 
+export function saveGeneratedPreset(input: PresetDefinition): PresetDefinition {
+  const db = getDb();
+  const now = nowIso();
+
+  db.insert(savedPresets)
+    .values({
+      id: input.id,
+      name: input.name,
+      description: input.description,
+      agents: serializeCustomPresetAgents(input.agents),
+      createdAt: now,
+      updatedAt: now
+    })
+    .onConflictDoUpdate({
+      target: savedPresets.id,
+      set: {
+        name: input.name,
+        description: input.description,
+        agents: serializeCustomPresetAgents(input.agents),
+        updatedAt: now
+      }
+    })
+    .run();
+
+  return input;
+}
+
+export function listSavedPresets(): PresetDefinition[] {
+  const db = getDb();
+  return db.select().from(savedPresets).orderBy(desc(savedPresets.updatedAt)).all()
+    .map(mapSavedPreset)
+    .filter((preset): preset is PresetDefinition => preset !== null);
+}
+
 export function createSession(input: SessionCreateInput): SessionRecord {
   const db = getDb();
   const now = nowIso();
@@ -418,9 +462,26 @@ export function queueSessionRun(sessionId: string): SessionRunRecord {
   return startSessionRun(sessionId);
 }
 
-export function listSessions(): SessionSummary[] {
+function normalizeSessionListQuery(options?: SessionListQuery): Required<SessionListQuery> {
+  const limit = options?.limit;
+  const offset = options?.offset;
+
+  return {
+    limit: typeof limit === "number" && Number.isFinite(limit) ? Math.max(1, Math.trunc(limit)) : 50,
+    offset: typeof offset === "number" && Number.isFinite(offset) ? Math.max(0, Math.trunc(offset)) : 0
+  };
+}
+
+export function countSessions(): number {
+  const sqlite = getSQLite();
+  const row = sqlite.prepare("SELECT COUNT(*) as count FROM sessions").get() as { count: number };
+  return row.count;
+}
+
+export function listSessions(options?: SessionListQuery): SessionSummary[] {
   const db = getDb();
-  const sessionRows = db.select().from(sessions).orderBy(desc(sessions.updatedAt)).all();
+  const query = normalizeSessionListQuery(options);
+  const sessionRows = db.select().from(sessions).orderBy(desc(sessions.updatedAt)).limit(query.limit).offset(query.offset).all();
   const runIds = sessionRows.map((session) => session.currentRunId).filter((value): value is string => Boolean(value));
   const runRows = runIds.length > 0
     ? db.select().from(sessionRuns).where(inArray(sessionRuns.id, runIds)).all()
@@ -432,6 +493,42 @@ export function listSessions(): SessionSummary[] {
     session: mapSession(session),
     run: session.currentRunId ? runMap.get(session.currentRunId) ?? null : null
   }));
+}
+
+export function deleteSession(sessionId: string): boolean {
+  const db = getDb();
+  const session = getSession(sessionId);
+  if (!session) {
+    return false;
+  }
+
+  const currentRun = getCurrentRun(sessionId);
+  if (currentRun?.status === "running") {
+    throw new Error("Cannot delete a running session");
+  }
+
+  const runRows = db.select({ id: sessionRuns.id }).from(sessionRuns).where(eq(sessionRuns.sessionId, sessionId)).all();
+  const runIds = runRows.map((run) => run.id);
+  const roundRows = runIds.length > 0
+    ? db.select({ id: rounds.id }).from(rounds).where(inArray(rounds.runId, runIds)).all()
+    : [];
+  const roundIds = roundRows.map((round) => round.id);
+
+  db.transaction((tx) => {
+    tx.delete(todos).where(eq(todos.sessionId, sessionId)).run();
+    tx.delete(decisions).where(eq(decisions.sessionId, sessionId)).run();
+
+    tx.delete(messages).where(eq(messages.sessionId, sessionId)).run();
+
+    if (runIds.length > 0) {
+      tx.delete(rounds).where(inArray(rounds.runId, runIds)).run();
+      tx.delete(sessionRuns).where(inArray(sessionRuns.id, runIds)).run();
+    }
+
+    tx.delete(sessions).where(eq(sessions.id, sessionId)).run();
+  });
+
+  return true;
 }
 
 export function getCurrentRun(sessionId: string): SessionRunRecord | null {

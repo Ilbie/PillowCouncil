@@ -48,6 +48,15 @@ function createConnection(): Database.Database {
       updated_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS saved_presets (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL,
+      agents TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS session_runs (
       id TEXT PRIMARY KEY,
       session_id TEXT NOT NULL,
@@ -129,6 +138,7 @@ function createConnection(): Database.Database {
 
     CREATE INDEX IF NOT EXISTS idx_sessions_current_run ON sessions(current_run_id);
     CREATE INDEX IF NOT EXISTS idx_app_settings_key ON app_settings(key);
+    CREATE INDEX IF NOT EXISTS idx_saved_presets_updated ON saved_presets(updated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_runs_session_created ON session_runs(session_id, created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_runs_status_created ON session_runs(status, created_at ASC);
     CREATE INDEX IF NOT EXISTS idx_rounds_run_round ON rounds(run_id, round_number ASC);

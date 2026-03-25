@@ -1,4 +1,4 @@
-import { getSessionDetail } from "@ship-council/shared";
+import { deleteSession, getSessionDetail } from "@ship-council/shared";
 
 import { RouteError, withErrorHandler } from "@/app/api/_utils";
 
@@ -14,3 +14,21 @@ export const GET = withErrorHandler(async (_: Request, context: { params: Promis
 
   return Response.json(detail);
 }, { fallbackMessage: "Failed to load session" });
+
+export const DELETE = withErrorHandler(async (_: Request, context: { params: Promise<{ id: string }> }) => {
+  const { id } = await context.params;
+
+  try {
+    const deleted = deleteSession(id);
+    if (!deleted) {
+      throw new RouteError(404, "Session not found");
+    }
+  } catch (error) {
+    if (error instanceof Error && error.message === "Cannot delete a running session") {
+      throw new RouteError(409, error.message);
+    }
+    throw error;
+  }
+
+  return Response.json({ deletedSessionId: id });
+}, { fallbackMessage: "Failed to delete session" });

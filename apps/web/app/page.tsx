@@ -1,34 +1,35 @@
 import { PRESET_DEFINITIONS } from "@ship-council/agents";
-import { getDefaultAuthModeId, getDefaultModelId, getDefaultProviderId, getProviderConnectionState, loadProviderCatalog } from "@ship-council/providers";
-import { getAppSettings, listSessions } from "@ship-council/shared";
+import { countSessions, getAppSettings, listSavedPresets, listSessions } from "@ship-council/shared";
 
 import { CouncilApp } from "@/components/council-app";
+import { SESSION_HISTORY_PAGE_SIZE } from "@/lib/council-app-types";
+import { mergePersistedPresets } from "@/lib/council-app-helpers";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const sessions = listSessions();
-  const providerOptions = await loadProviderCatalog().catch(() => []);
-  const defaultProvider = getDefaultProviderId(providerOptions);
-  const defaultModel = getDefaultModelId(defaultProvider, providerOptions);
-  const defaultAuthMode = getDefaultAuthModeId(defaultProvider, providerOptions);
   const settings = getAppSettings();
-  const initialConnection = await getProviderConnectionState(settings.providerId, settings.authMode).catch(() => ({
+  const sessions = listSessions({ limit: SESSION_HISTORY_PAGE_SIZE, offset: 0 });
+  const totalSessionCount = countSessions();
+  const savedPresets = listSavedPresets();
+  const initialPresets = mergePersistedPresets(PRESET_DEFINITIONS, savedPresets);
+  const initialConnection = {
     providerId: settings.providerId,
     authModeId: settings.authMode,
     connected: false,
     available: false
-  }));
+  };
 
   return (
     <CouncilApp
-      initialPresets={PRESET_DEFINITIONS}
+      initialPresets={initialPresets}
       initialSessions={sessions}
+      initialTotalSessionCount={totalSessionCount}
       initialSettings={settings}
-      providerOptions={providerOptions}
-      defaultProvider={defaultProvider}
-      defaultModel={defaultModel}
-      defaultAuthMode={defaultAuthMode}
+      providerOptions={[]}
+      defaultProvider={settings.providerId}
+      defaultModel={settings.modelId}
+      defaultAuthMode={settings.authMode}
       initialConnection={initialConnection}
     />
   );

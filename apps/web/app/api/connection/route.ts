@@ -17,10 +17,11 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const providerId = url.searchParams.get("providerId") ?? settings.providerId;
   const authModeId = url.searchParams.get("authMode") ?? settings.authMode;
+  const force = url.searchParams.get("refresh") === "true";
 
   return Response.json({
     settings,
-    connection: await getProviderConnectionState(providerId, authModeId)
+    connection: await getProviderConnectionState(providerId, authModeId, { force })
   });
 }
 

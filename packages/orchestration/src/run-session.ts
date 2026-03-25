@@ -632,6 +632,7 @@ export async function runCouncilSession(input: {
     provider: input.session.provider,
     model: input.session.model,
     variant: input.session.thinkingIntensity,
+    enableWebSearch: input.session.enableWebSearch,
     system: [
       "You are finalizing the Ship Council decision.",
       "Return a single actionable JSON payload.",

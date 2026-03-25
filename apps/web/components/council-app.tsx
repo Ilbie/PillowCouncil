@@ -68,18 +68,28 @@ import {
   waitForOauthAutoCompletion
 } from "@/lib/provider-auth";
 import {
+  buildAvailablePresets,
   clampAgentCount,
   clampDebateIntensity,
+  deriveConnectionStateFromProviderOptions,
   filterLiveMessagesForSessionRun,
   isMatchingSessionRunEvent,
   getThinkingIntensityDescription,
   getThinkingIntensityLabel,
+  getNextSelectedSessionIdAfterDelete,
+  isGeneratedPresetSourceCurrent,
+  mergeSessionPages,
+  resolveCustomPresetForSessionCreate,
   isSameConnection,
   readJson,
   reconcileConnection,
   removeLiveMessagesForSession,
+  shouldRefreshSavedConnectionStateOnMount,
+  shouldRefreshDraftConnectionState,
+  shouldRefreshProviderCatalogOnMount,
   type ConnectionDraft
 } from "@/lib/council-app-helpers";
+import { SESSION_HISTORY_PAGE_SIZE, type SessionHistoryListResponse } from "@/lib/council-app-types";
 import {
   getCloseLabel,
   getOpenPresetStudioLabel,
@@ -110,6 +120,7 @@ import { cn } from "@/lib/utils";
 type CouncilAppProps = {
   initialPresets: PresetDefinition[];
   initialSessions: SessionSummary[];
+  initialTotalSessionCount: number;
   initialSettings: AppSettings;
   initialConnection: ProviderConnectionState;
   providerOptions: ProviderOption[];
@@ -129,6 +140,7 @@ const CUSTOM_PRESET_AGENT_COUNT_DEFAULT = GENERATED_PRESET_AGENT_COUNT_DEFAULT;
 export function CouncilApp({
   initialPresets,
   initialSessions,
+  initialTotalSessionCount,
   initialSettings,
   initialConnection,
   providerOptions: initialProviderOptions,
@@ -138,10 +150,12 @@ export function CouncilApp({
 }: CouncilAppProps) {
   const timelineEndRef = useRef<HTMLDivElement | null>(null);
   const oauthPopupRef = useRef<Window | null>(null);
+  const loadedSessionLimitRef = useRef(Math.max(initialSessions.length, SESSION_HISTORY_PAGE_SIZE));
   const [uiLocale, setUiLocale] = useState<UiLocale>("ko");
   const [sessions, setSessions] = useState(initialSessions);
+  const [totalSessionCount, setTotalSessionCount] = useState(initialTotalSessionCount);
   const [providerOptions, setProviderOptions] = useState(initialProviderOptions);
-  const [selectedId, setSelectedId] = useState(initialSessions[0]?.session.id ?? null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialSessions[0]?.session.id ?? null);
   const [detail, setDetail] = useState<SessionDetailResponse | null>(null);
   const [liveMessages, setLiveMessages] = useState<LiveMessageMap>({});
   const [error, setError] = useState<string | null>(null);
@@ -151,6 +165,8 @@ export function CouncilApp({
   const [isSavingMcpSettings, setIsSavingMcpSettings] = useState(false);
   const [isSavingSkillsSettings, setIsSavingSkillsSettings] = useState(false);
   const [isStoppingRun, setIsStoppingRun] = useState(false);
+  const [isLoadingMoreSessions, setIsLoadingMoreSessions] = useState(false);
+  const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   const [savedSettings, setSavedSettings] = useState<AppSettings>(initialSettings);
   const [mcpSettings, setMcpSettings] = useState<McpSettingsDraft>({
     enabled: initialSettings.enableMcp,
@@ -198,13 +214,7 @@ export function CouncilApp({
   });
 
   const copy = useMemo(() => getUiCopy(uiLocale), [uiLocale]);
-  const availablePresets = useMemo(() => {
-    if (!generatedPreset) {
-      return initialPresets;
-    }
-
-    return [...initialPresets.filter((preset) => preset.id !== generatedPreset.id), generatedPreset];
-  }, [generatedPreset, initialPresets]);
+  const availablePresets = useMemo(() => buildAvailablePresets(initialPresets, generatedPreset), [generatedPreset, initialPresets]);
   const sessionLanguageOptions = useMemo(
     () =>
       SESSION_LANGUAGE_VALUES.map((value) => ({
@@ -295,10 +305,16 @@ export function CouncilApp({
   const isPresetGenerationSuccess = Boolean(
     generatedPresetSource &&
     generatedPreset &&
-    generatedPresetSource.prompt === generatedPresetPrompt &&
-    generatedPresetSource.agentCount === generatedPresetAgentCount &&
-    generatedPresetSource.language === form.language &&
-    generatedPresetSource.model === form.model
+    isGeneratedPresetSourceCurrent({
+      source: generatedPresetSource,
+      current: {
+        prompt: generatedPresetPrompt,
+        agentCount: generatedPresetAgentCount,
+        language: form.language,
+        model: form.model,
+        providerId: savedSettings.providerId
+      }
+    })
   );
   const isSelectedSessionRunning = Boolean(
     selectedId && (activeRunSessionId === selectedId || detail?.run?.status === "running")
@@ -325,13 +341,35 @@ export function CouncilApp({
     });
   };
 
-  const refreshSessions = async () => {
-    const list = await readJson<SessionSummary[]>("/api/sessions");
-    setSessions(list);
-    if (!selectedId && list[0]) {
-      setSelectedId(list[0].session.id);
+  const refreshSessions = async (options?: { limit?: number }) => {
+    const limit = Math.max(options?.limit ?? loadedSessionLimitRef.current, SESSION_HISTORY_PAGE_SIZE);
+    loadedSessionLimitRef.current = limit;
+    const payload = await readJson<SessionHistoryListResponse>(`/api/sessions?limit=${limit}&offset=0`);
+    setSessions(payload.items);
+    setTotalSessionCount(payload.totalCount);
+    if (!selectedId && payload.items[0]) {
+      setSelectedId(payload.items[0].session.id);
     }
-    return list;
+    return payload.items;
+  };
+
+  const loadMoreSessions = async () => {
+    setError(null);
+    setIsLoadingMoreSessions(true);
+
+    try {
+      const nextLimit = loadedSessionLimitRef.current + SESSION_HISTORY_PAGE_SIZE;
+      const payload = await readJson<SessionHistoryListResponse>(
+        `/api/sessions?limit=${SESSION_HISTORY_PAGE_SIZE}&offset=${sessions.length}`
+      );
+      setSessions((current) => mergeSessionPages(current, payload.items));
+      setTotalSessionCount(payload.totalCount);
+      loadedSessionLimitRef.current = Math.min(nextLimit, payload.totalCount);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : copy.errorFallback);
+    } finally {
+      setIsLoadingMoreSessions(false);
+    }
   };
 
   const refreshDetail = async (sessionId: string) => {
@@ -372,11 +410,15 @@ export function CouncilApp({
     return payload;
   };
 
-  const refreshProviderCatalog = async () => {
+  const refreshProviderCatalog = async (options?: { force?: boolean }) => {
     setIsRefreshingModels(true);
     try {
-      const catalog = await readJson<ProviderOption[]>(`/api/providers/models?ts=${Date.now()}`);
+      const catalog = await readJson<ProviderOption[]>(
+        options?.force ? "/api/providers/models?refresh=true" : "/api/providers/models"
+      );
       setProviderOptions(catalog);
+      setSavedConnectionState(deriveConnectionStateFromProviderOptions(catalog, savedSettings.providerId, savedSettings.authMode));
+      setDraftConnectionState(deriveConnectionStateFromProviderOptions(catalog, connectionDraft.providerId, connectionDraft.authMode));
       if (catalog.length > 0) {
         setConnectionDraft((current) =>
           reconcileConnection(catalog, current, {
@@ -389,22 +431,6 @@ export function CouncilApp({
     } finally {
       setIsRefreshingModels(false);
     }
-  };
-
-  const refreshConnectionState = async (providerId: string, authMode: string) => {
-    const payload = await readJson<{ connection: ProviderConnectionState }>(
-      `/api/connection?providerId=${encodeURIComponent(providerId)}&authMode=${encodeURIComponent(authMode)}`
-    );
-    setDraftConnectionState(payload.connection);
-    return payload.connection;
-  };
-
-  const refreshSavedConnectionState = async (providerId = savedSettings.providerId, authMode = savedSettings.authMode) => {
-    const payload = await readJson<{ connection: ProviderConnectionState }>(
-      `/api/connection?providerId=${encodeURIComponent(providerId)}&authMode=${encodeURIComponent(authMode)}`
-    );
-    setSavedConnectionState(payload.connection);
-    return payload.connection;
   };
 
   const launchRun = (sessionId: string) => {
@@ -484,12 +510,38 @@ export function CouncilApp({
       return;
     }
 
+    if (
+      !shouldRefreshDraftConnectionState({
+        providerId: connectionDraft.providerId,
+        authMode: connectionDraft.authMode,
+        currentState: draftConnectionState
+      })
+    ) {
+      return;
+    }
+
     startTransition(() => {
-      refreshConnectionState(connectionDraft.providerId, connectionDraft.authMode).catch((requestError) => {
-        setError(requestError instanceof Error ? requestError.message : copy.errorFallback);
-      });
+      setDraftConnectionState(deriveConnectionStateFromProviderOptions(providerOptions, connectionDraft.providerId, connectionDraft.authMode));
     });
   }, [connectionDraft.authMode, connectionDraft.providerId, copy.errorFallback]);
+
+  useEffect(() => {
+    if (!savedSettings.providerId || !savedSettings.authMode) {
+      return;
+    }
+
+    if (!providerOptions.length || !shouldRefreshSavedConnectionStateOnMount({
+      providerId: savedSettings.providerId,
+      authMode: savedSettings.authMode,
+      currentState: savedConnectionState
+    })) {
+      return;
+    }
+
+    startTransition(() => {
+      setSavedConnectionState(deriveConnectionStateFromProviderOptions(providerOptions, savedSettings.providerId, savedSettings.authMode));
+    });
+  }, [providerOptions, savedConnectionState, savedSettings.authMode, savedSettings.providerId]);
 
   useEffect(() => {
     const nextModelId = sessionModelOptions.find((model) => model.id === form.model)?.id ?? sessionModelOptions[0]?.id ?? "";
@@ -531,12 +583,16 @@ export function CouncilApp({
   }, [form.enableWebSearch, sessionModel?.supportsWebSearch]);
 
   useEffect(() => {
+    if (!shouldRefreshProviderCatalogOnMount(providerOptions)) {
+      return;
+    }
+
     startTransition(() => {
       refreshProviderCatalog().catch((requestError) => {
         setError(requestError instanceof Error ? requestError.message : copy.errorFallback);
       });
     });
-  }, []);
+  }, [providerOptions, copy.errorFallback]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -724,7 +780,7 @@ export function CouncilApp({
         authMode: saved.settings.authMode,
         apiKey: ""
       });
-      await refreshProviderCatalog();
+      await refreshProviderCatalog({ force: true });
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : copy.errorFallback);
     } finally {
@@ -831,15 +887,19 @@ export function CouncilApp({
           });
 
           setSavedSettings(response.settings);
-          const nextSavedConnection = await refreshSavedConnectionState(response.settings.providerId, response.settings.authMode);
+          const nextSavedConnection = deriveConnectionStateFromProviderOptions(
+            providerOptions,
+            response.settings.providerId,
+            response.settings.authMode
+          );
           setDraftConnectionState(nextSavedConnection);
           return response;
         },
         waitForCompletion: async () =>
           waitForOauthAutoCompletion({
             isConnected: async () => {
-              await refreshProviderCatalog();
-              const connection = await refreshConnectionState(pendingProviderId, pendingAuthModeId);
+              const catalog = await refreshProviderCatalog({ force: true });
+              const connection = deriveConnectionStateFromProviderOptions(catalog, pendingProviderId, pendingAuthModeId);
               return connection.connected;
             },
             pollIntervalMs: 2_000,
@@ -852,8 +912,12 @@ export function CouncilApp({
       popup.location.href = flow.pendingOauth.authorizationUrl;
 
       void flow.completion?.then(async () => {
-        await refreshProviderCatalog();
-        const nextConnection = await refreshConnectionState(flow.pendingOauth.providerId, flow.pendingOauth.authModeId);
+        const catalog = await refreshProviderCatalog({ force: true });
+        const nextConnection = deriveConnectionStateFromProviderOptions(
+          catalog,
+          flow.pendingOauth.providerId,
+          flow.pendingOauth.authModeId
+        );
         setSavedConnectionState(nextConnection);
         oauthPopupRef.current?.close();
         oauthPopupRef.current = null;
@@ -862,7 +926,6 @@ export function CouncilApp({
         );
         setError(null);
       }).catch((requestError) => {
-        void refreshSavedConnectionState(flow.pendingOauth.providerId, flow.pendingOauth.authModeId).catch(() => undefined);
         oauthPopupRef.current?.close();
         oauthPopupRef.current = null;
         setPendingOauth((current) =>
@@ -892,8 +955,8 @@ export function CouncilApp({
           code: pendingOauth.code
         })
       });
-      await refreshProviderCatalog();
-      const nextConnection = await refreshConnectionState(pendingOauth.providerId, pendingOauth.authModeId);
+      const catalog = await refreshProviderCatalog({ force: true });
+      const nextConnection = deriveConnectionStateFromProviderOptions(catalog, pendingOauth.providerId, pendingOauth.authModeId);
       setSavedConnectionState(nextConnection);
       oauthPopupRef.current?.close();
       oauthPopupRef.current = null;
@@ -915,8 +978,8 @@ export function CouncilApp({
       oauthPopupRef.current?.close();
       oauthPopupRef.current = null;
       setPendingOauth(null);
-      await refreshProviderCatalog();
-      const nextConnection = await refreshConnectionState(connectionDraft.providerId, connectionDraft.authMode);
+      const catalog = await refreshProviderCatalog({ force: true });
+      const nextConnection = deriveConnectionStateFromProviderOptions(catalog, connectionDraft.providerId, connectionDraft.authMode);
       setSavedConnectionState(nextConnection);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : copy.errorFallback);
@@ -957,7 +1020,8 @@ export function CouncilApp({
         prompt: generatedPresetPrompt,
         agentCount: generatedPresetAgentCount,
         language: form.language,
-        model: form.model
+        model: form.model,
+        providerId: savedSettings.providerId
       });
       setForm((current) => ({ ...current, presetId: response.preset.id }));
     } catch (requestError) {
@@ -1006,14 +1070,17 @@ export function CouncilApp({
     setError(null);
 
     try {
-      const created = await readJson<{ sessionId: string }>("/api/sessions", {
-        method: "POST",
-        body: JSON.stringify({
-          ...form,
-          customPreset: generatedPreset?.id === form.presetId ? generatedPreset : undefined,
-          provider: savedSettings.providerId,
-          model: form.model
-        })
+        const created = await readJson<{ sessionId: string }>("/api/sessions", {
+          method: "POST",
+          body: JSON.stringify({
+            ...form,
+            customPreset: resolveCustomPresetForSessionCreate({
+              presetId: form.presetId,
+              selectedPreset
+            }),
+            provider: savedSettings.providerId,
+            model: form.model
+          })
       });
 
       setIsCreateSessionOpen(false);
@@ -1027,8 +1094,6 @@ export function CouncilApp({
         prompt: "",
         presetId: initialPresets[0]?.id ?? "saas-founder"
       }));
-      setGeneratedPreset(null);
-      setGeneratedPresetSource(null);
       setGeneratedPresetPrompt("");
       setGeneratedPresetAgentCount(CUSTOM_PRESET_AGENT_COUNT_DEFAULT);
     } catch (requestError) {
@@ -1078,6 +1143,47 @@ export function CouncilApp({
     }
   };
 
+  const handleDeleteSession = async (sessionId: string) => {
+    const target = sessions.find((entry) => entry.session.id === sessionId);
+    if (!target) {
+      return;
+    }
+
+    const confirmed = window.confirm(`${copy.sessions.confirmDelete}
+
+${target.session.title}`);
+    if (!confirmed) {
+      return;
+    }
+
+    setError(null);
+    setDeletingSessionId(sessionId);
+
+    try {
+      await readJson<{ deletedSessionId: string }>(`/api/sessions/${sessionId}`, {
+        method: "DELETE"
+      });
+      const nextSessions = sessions.filter((entry) => entry.session.id !== sessionId);
+      const nextSelectedId = getNextSelectedSessionIdAfterDelete(nextSessions, sessionId, selectedId);
+      setSelectedId(nextSelectedId);
+      if (selectedId === sessionId) {
+        setDetail(null);
+        setLiveMessages((current) => removeLiveMessagesForSession(current, sessionId));
+        setSelectedMessageId(null);
+        setSelectedAgentKey(null);
+      }
+      setSessions(nextSessions);
+      setTotalSessionCount((current) => Math.max(0, current - 1));
+      const preservedLimit = Math.max(loadedSessionLimitRef.current, SESSION_HISTORY_PAGE_SIZE);
+      loadedSessionLimitRef.current = preservedLimit;
+      await refreshSessions({ limit: preservedLimit });
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : copy.errorFallback);
+    } finally {
+      setDeletingSessionId(null);
+    }
+  };
+
   const activePreset = useMemo(
     () =>
       detail?.session.customPreset ??
@@ -1108,24 +1214,6 @@ export function CouncilApp({
     }));
   }, [availablePresets, form.presetId, generatedPreset, initialPresets]);
 
-  useEffect(() => {
-    if (!generatedPreset || !generatedPresetSource) {
-      return;
-    }
-
-    const isStale =
-      generatedPresetSource.prompt !== generatedPresetPrompt ||
-      generatedPresetSource.agentCount !== generatedPresetAgentCount ||
-      generatedPresetSource.language !== form.language ||
-      generatedPresetSource.model !== form.model;
-
-    if (!isStale) {
-      return;
-    }
-
-    setGeneratedPreset(null);
-    setGeneratedPresetSource(null);
-  }, [form.language, form.model, generatedPreset, generatedPresetAgentCount, generatedPresetPrompt, generatedPresetSource]);
   const timelineTitle = detail?.session.title ?? selectedSessionSummary?.session.title ?? copy.detail.emptyTitle;
   const timelinePrompt = detail?.session.prompt ?? selectedSessionSummary?.session.prompt ?? copy.detail.emptyDescription;
   const debateVisualization = useMemo(
@@ -1211,10 +1299,15 @@ export function CouncilApp({
               copy={copy}
               uiLocale={uiLocale}
               sessions={sessions}
+              totalSessionCount={totalSessionCount}
               selectedId={selectedId}
               activeRunSessionId={activeRunSessionId}
+              isLoadingMore={isLoadingMoreSessions}
+              deletingSessionId={deletingSessionId}
               onOpenCreateSession={() => setIsCreateSessionOpen(true)}
               onSelectSession={setSelectedId}
+              onLoadMoreSessions={loadMoreSessions}
+              onDeleteSession={handleDeleteSession}
             />
           </div>
 

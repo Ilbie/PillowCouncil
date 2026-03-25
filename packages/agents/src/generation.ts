@@ -7,11 +7,12 @@ import { SESSION_LANGUAGES, type PresetDefinition, type SessionLanguage } from "
 import {
   CUSTOM_PRESET_ID_PREFIX,
   GENERATED_PRESET_AGENT_COUNT_MAX,
-  GENERATED_PRESET_AGENT_COUNT_MIN
+  GENERATED_PRESET_AGENT_COUNT_MIN,
+  GENERATED_PRESET_PROMPT_MIN_LENGTH
 } from "./constants";
 
 export const presetGenerationInputSchema = z.object({
-  prompt: z.string().trim().min(10).max(2000),
+  prompt: z.string().trim().min(GENERATED_PRESET_PROMPT_MIN_LENGTH).max(2000),
   agentCount: z.number().int().min(GENERATED_PRESET_AGENT_COUNT_MIN).max(GENERATED_PRESET_AGENT_COUNT_MAX),
   language: z.enum(SESSION_LANGUAGES).default("ko"),
   provider: z.string().trim().min(1).max(50),

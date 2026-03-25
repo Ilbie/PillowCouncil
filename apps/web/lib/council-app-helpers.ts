@@ -3,8 +3,8 @@ import {
   GENERATED_PRESET_AGENT_COUNT_MAX,
   GENERATED_PRESET_AGENT_COUNT_MIN
 } from "@ship-council/agents";
-import type { LiveMessageRecord, ProviderOption, RunStreamEvent, ThinkingIntensity } from "@ship-council/shared";
-
+import type { ProviderConnectionState } from "@ship-council/providers";
+import type { LiveMessageRecord, PresetDefinition, ProviderOption, RunStreamEvent, SessionSummary, ThinkingIntensity } from "@ship-council/shared";
 import { getStatusLabel, type UiLocale } from "@/lib/i18n";
 import { pickPreferredAuthModeId } from "@/lib/provider-auth";
 
@@ -33,6 +33,35 @@ const DEBATE_INTENSITY_MAX = 20;
 const DEBATE_INTENSITY_DEFAULT = 2;
 const RUN_STOPPED_BY_USER_MESSAGE = "Run stopped by user.";
 
+export function buildAvailablePresets(initialPresets: PresetDefinition[], generatedPreset: PresetDefinition | null): PresetDefinition[] {
+  if (!generatedPreset) {
+    return initialPresets;
+  }
+
+  return [...initialPresets.filter((preset) => preset.id !== generatedPreset.id), generatedPreset];
+}
+
+export function mergePersistedPresets(basePresets: PresetDefinition[], persistedPresets: PresetDefinition[]): PresetDefinition[] {
+  const merged = new Map(basePresets.map((preset) => [preset.id, preset]));
+
+  for (const preset of persistedPresets) {
+    merged.set(preset.id, preset);
+  }
+
+  return [...merged.values()];
+}
+
+export function resolveCustomPresetForSessionCreate(input: {
+  presetId: string;
+  selectedPreset: PresetDefinition | null | undefined;
+}): PresetDefinition | undefined {
+  if (!input.selectedPreset || input.selectedPreset.id !== input.presetId || !input.presetId.startsWith("custom:")) {
+    return undefined;
+  }
+
+  return input.selectedPreset;
+}
+
 export function filterLiveMessagesForSessionRun(messages: LiveMessageMap, sessionId: string, runId: string | null): LiveMessageMap {
   return Object.fromEntries(
     Object.entries(messages).filter(([, message]) => message.sessionId !== sessionId || (runId !== null && message.runId === runId))
@@ -41,6 +70,27 @@ export function filterLiveMessagesForSessionRun(messages: LiveMessageMap, sessio
 
 export function removeLiveMessagesForSession(messages: LiveMessageMap, sessionId: string): LiveMessageMap {
   return Object.fromEntries(Object.entries(messages).filter(([, message]) => message.sessionId !== sessionId));
+}
+
+export function mergeSessionPages(current: SessionSummary[], incoming: SessionSummary[]): SessionSummary[] {
+  const merged = new Map(current.map((entry) => [entry.session.id, entry]));
+  for (const entry of incoming) {
+    merged.set(entry.session.id, entry);
+  }
+
+  return [...merged.values()].sort((left, right) => right.session.updatedAt.localeCompare(left.session.updatedAt));
+}
+
+export function getNextSelectedSessionIdAfterDelete(
+  sessions: SessionSummary[],
+  deletedSessionId: string,
+  selectedSessionId: string | null
+): string | null {
+  if (selectedSessionId !== deletedSessionId) {
+    return selectedSessionId;
+  }
+
+  return sessions.find((entry) => entry.session.id !== deletedSessionId)?.session.id ?? null;
 }
 
 export function clampDebateIntensity(value: number): number {
@@ -185,4 +235,80 @@ export async function readJson<T>(input: RequestInfo, init?: RequestInit): Promi
   }
 
   return response.json() as Promise<T>;
+}
+
+export function shouldRefreshProviderCatalogOnMount(providerOptions: Array<unknown>): boolean {
+  return providerOptions.length === 0;
+}
+
+export function shouldRefreshDraftConnectionState(input: {
+  providerId: string;
+  authMode: string;
+  currentState: {
+    providerId: string;
+    authModeId: string;
+    [key: string]: unknown;
+  };
+}): boolean {
+  return input.providerId !== input.currentState.providerId || input.authMode !== input.currentState.authModeId;
+}
+
+export function shouldRefreshSavedConnectionStateOnMount(input: {
+  providerId: string;
+  authMode: string;
+  currentState: {
+    providerId: string;
+    authModeId: string;
+    connected: boolean;
+    available: boolean;
+  };
+}): boolean {
+  if (!input.providerId || !input.authMode) {
+    return false;
+  }
+
+  return (
+    input.providerId !== input.currentState.providerId ||
+    input.authMode !== input.currentState.authModeId ||
+    !input.currentState.available
+  );
+}
+
+export function deriveConnectionStateFromProviderOptions(
+  providerOptions: ProviderOption[],
+  providerId: string,
+  authMode: string
+): ProviderConnectionState {
+  const provider = providerOptions.find((entry) => entry.id === providerId);
+  return {
+    providerId,
+    authModeId: authMode,
+    connected: provider?.connected ?? false,
+    available: provider?.authModes.some((entry) => entry.id === authMode) ?? false
+  };
+}
+
+export function isGeneratedPresetSourceCurrent(input: {
+  source: {
+    prompt: string;
+    agentCount: number;
+    language: string;
+    model: string;
+    providerId: string;
+  };
+  current: {
+    prompt: string;
+    agentCount: number;
+    language: string;
+    model: string;
+    providerId: string;
+  };
+}): boolean {
+  return (
+    input.source.prompt === input.current.prompt &&
+    input.source.agentCount === input.current.agentCount &&
+    input.source.language === input.current.language &&
+    input.source.model === input.current.model &&
+    input.source.providerId === input.current.providerId
+  );
 }

@@ -532,6 +532,18 @@ export type SessionSummary = {
   run: SessionRunRecord | null;
 };
 
+export type SessionListQuery = {
+  limit?: number;
+  offset?: number;
+};
+
+export type SessionListResponse = {
+  items: SessionSummary[];
+  totalCount: number;
+  limit: number;
+  offset: number;
+};
+
 export type SessionDetailResponse = {
   session: SessionRecord;
   run: SessionRunRecord | null;

@@ -1,5 +1,6 @@
 import { presetGenerationInputSchema } from "@ship-council/agents/generation";
 import { PresetGenerationError, generatePreset } from "@ship-council/agents/preset-generation-service";
+import { saveGeneratedPreset } from "@ship-council/shared";
 
 import { RouteError, withErrorHandler } from "@/app/api/_utils";
 
@@ -9,6 +10,7 @@ export const POST = withErrorHandler(async (request: Request) => {
   const body = await request.json();
   const input = presetGenerationInputSchema.parse(body);
   const preset = await generatePreset(input);
+  saveGeneratedPreset(preset);
 
   return Response.json({ preset });
 }, {

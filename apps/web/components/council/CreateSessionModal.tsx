@@ -89,6 +89,10 @@ export const CreateSessionModal: FC<CreateSessionModalProps> = ({
     return null;
   }
 
+  const presetOptions = generatedPreset && !availablePresets.some((preset) => preset.id === generatedPreset.id)
+    ? [...availablePresets, generatedPreset]
+    : availablePresets;
+
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
@@ -141,7 +145,7 @@ export const CreateSessionModal: FC<CreateSessionModalProps> = ({
                 <label className="block text-[11px] font-semibold uppercase tracking-[0.22em] text-gray-400">{copy.session.presetLabel}</label>
                 <div className="relative">
                   <Select className="h-12 appearance-none rounded-[18px] border-gray-800 bg-gray-900/80 px-4 pr-10 text-sm text-gray-100" value={form.presetId} onChange={(event: ChangeEvent<HTMLSelectElement>) => onFormChange({ presetId: event.target.value })}>
-                    {availablePresets.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
+                    {presetOptions.map((preset) => <option key={preset.id} value={preset.id}>{preset.name}</option>)}
                   </Select>
                   <ChevronDown size={16} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-500" />
                 </div>

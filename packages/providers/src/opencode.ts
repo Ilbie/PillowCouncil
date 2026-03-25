@@ -55,6 +55,7 @@ export function buildOpencodeServerEnv(
     ...env,
     XDG_DATA_HOME: getOpenCodeDataHomeRoot(env),
     OPENCODE_CONFIG_CONTENT: JSON.stringify({}),
+    OPENCODE_ENABLE_EXA: "1",
     OPENCODE_DISABLE_CLAUDE_CODE_SKILLS: settings.enableSkills ? "0" : "1"
   };
 }
@@ -75,6 +76,7 @@ function getOpencodeHandleCacheKey(env: NodeJS.ProcessEnv = process.env): string
     directory: getOpencodeDirectory(),
     xdgDataHome: serverEnv.XDG_DATA_HOME ?? "",
     configContent: serverEnv.OPENCODE_CONFIG_CONTENT ?? "",
+    exaEnabled: serverEnv.OPENCODE_ENABLE_EXA ?? "",
     skillsDisabled: serverEnv.OPENCODE_DISABLE_CLAUDE_CODE_SKILLS ?? ""
   });
 }

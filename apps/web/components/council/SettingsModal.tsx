@@ -1,6 +1,7 @@
 import { type ChangeEvent, type FC, useState } from "react";
 import { CheckCircle2, ChevronDown, Cpu, LoaderCircle, Lock, LogIn, Plus, Settings2, Sparkles, Trash2, X } from "lucide-react";
 
+import { GENERATED_PRESET_AGENT_COUNT_MIN, GENERATED_PRESET_PROMPT_MIN_LENGTH } from "@ship-council/agents";
 import type { ProviderConnectionState } from "@ship-council/providers";
 import type { AppSettings, PresetDefinition, ProviderOption, SessionLanguage } from "@ship-council/shared";
 
@@ -135,6 +136,42 @@ export const SettingsModal: FC<SettingsModalProps> = ({
   const [newSkillName, setNewSkillName] = useState("");
   const [newSkillDescription, setNewSkillDescription] = useState("");
   const [newSkillContent, setNewSkillContent] = useState("");
+  const trimmedPresetPrompt = generatedPresetPrompt.trim();
+  const remainingPresetPromptCharacters = Math.max(0, GENERATED_PRESET_PROMPT_MIN_LENGTH - trimmedPresetPrompt.length);
+  const presetGenerationBlockedReason = (() => {
+    if (!savedConnectionState.connected) {
+      return "not-connected" as const;
+    }
+
+    if (isConnectionDirty) {
+      return "dirty-connection" as const;
+    }
+
+    if (!savedSettings.providerId || !form.model) {
+      return "missing-model" as const;
+    }
+
+    if (remainingPresetPromptCharacters > 0) {
+      return "short-prompt" as const;
+    }
+
+    return null;
+  })();
+
+  const presetGenerationBlockedMessage = (() => {
+    switch (presetGenerationBlockedReason) {
+      case "not-connected":
+        return "연결 설정에서 공급사를 먼저 연결해주세요.";
+      case "dirty-connection":
+        return "연결 설정이 아직 저장되지 않았습니다. 먼저 저장한 뒤 프리셋을 생성해주세요.";
+      case "missing-model":
+        return "프리셋 생성 전에 세션 모델을 먼저 선택해주세요.";
+      case "short-prompt":
+        return `${remainingPresetPromptCharacters}자만 더 입력하면 프리셋 생성을 시작할 수 있습니다.`;
+      default:
+        return "저장된 연결 설정과 세션 환경을 바탕으로 새로운 프리셋을 구축합니다.";
+    }
+  })();
 
   if (!isOpen) {
     return null;
@@ -602,7 +639,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                     {isPresetTabLocked ? (
                       <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-2xl border border-gray-800/50 bg-[#0b0f19]/70 backdrop-blur-[2px] transition-all duration-500">
                         <div className="mb-4 rounded-full bg-gray-800 p-3 text-gray-400 shadow-lg"><Lock size={20} /></div>
-                        <p className="mb-4 text-base font-medium text-gray-300">연결 설정에서 공급사를 먼저 연결해주세요</p>
+                        <p className="mb-4 max-w-sm text-center text-base font-medium text-gray-300">{presetGenerationBlockedMessage}</p>
                         <button type="button" onClick={() => onSwitchTab("connection")} className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-blue-900/20 transition-colors hover:bg-blue-700">
                           연결 설정으로 이동하기
                         </button>
@@ -651,18 +688,18 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                           <div className="w-full sm:w-auto">
                             <label className="mb-2 block text-sm font-medium text-gray-400">에이전트 수</label>
                             <div className="flex gap-2">
-                              {[1, 3, 5].map((num) => (
+                              {[GENERATED_PRESET_AGENT_COUNT_MIN, 3, 5].map((num) => (
                                 <button key={num} type="button" onClick={() => onGeneratedPresetAgentCountChange(clampAgentCount(num))} className={`rounded-xl px-5 py-3.5 text-sm font-medium transition-colors ${generatedPresetAgentCount === num ? "border border-gray-600 bg-gray-700 text-white" : "border border-gray-800 bg-[#121826] text-gray-400 hover:bg-gray-800"}`}>
                                   {num}명
                                 </button>
                               ))}
                             </div>
                           </div>
-                          <button type="button" onClick={onGeneratePreset} disabled={isGeneratingPreset || generatedPresetPrompt.trim().length < 10 || !savedSettings.providerId || !form.model || !savedConnectionState.connected || isConnectionDirty} className={`flex w-full flex-1 items-center justify-center gap-2 rounded-xl py-3.5 font-semibold transition-all duration-300 sm:text-base ${isPresetGenerationSuccess ? "bg-green-600 text-white" : "bg-white text-gray-900 hover:bg-gray-100 active:scale-[0.99]"}`}>
+                          <button type="button" onClick={onGeneratePreset} disabled={isGeneratingPreset || presetGenerationBlockedReason !== null} className={`flex w-full flex-1 items-center justify-center gap-2 rounded-xl py-3.5 font-semibold transition-all duration-300 enabled:active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-gray-800 disabled:text-gray-500 sm:text-base ${isPresetGenerationSuccess ? "bg-green-600 text-white hover:bg-green-500" : "bg-white text-gray-900 hover:bg-gray-100"}`}>
                             {isGeneratingPreset ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-gray-900/30 border-t-gray-900" /> : isPresetGenerationSuccess ? <><CheckCircle2 size={20} /> 프리셋 생성 완료</> : <><Sparkles size={20} /> AI로 프리셋 생성</>}
                           </button>
                         </div>
-                        <p className="mt-4 text-center text-xs text-gray-600 sm:text-left">저장된 연결 설정과 세션 환경을 바탕으로 새로운 프리셋을 구축합니다.</p>
+                        <p className="mt-4 text-center text-xs text-gray-600 sm:text-left">{presetGenerationBlockedMessage}</p>
                       </div>
                     </div>
                   </div>

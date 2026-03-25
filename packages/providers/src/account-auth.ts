@@ -219,7 +219,7 @@ export async function completeProviderOauth(providerId: string, authModeId: stri
 }
 
 export async function getProviderConnection(providerId: string): Promise<{ providerId: string; connected: boolean }> {
-  const catalog = await loadProviderCatalog({ force: true });
+  const catalog = await loadProviderCatalog();
   const provider = catalog.find((item) => item.id === providerId);
 
   return {
@@ -228,8 +228,12 @@ export async function getProviderConnection(providerId: string): Promise<{ provi
   };
 }
 
-export async function getProviderConnectionState(providerId: string, authModeId: string): Promise<ProviderConnectionState> {
-  const catalog = await loadProviderCatalog({ force: true });
+export async function getProviderConnectionState(
+  providerId: string,
+  authModeId: string,
+  options?: { force?: boolean }
+): Promise<ProviderConnectionState> {
+  const catalog = await loadProviderCatalog({ force: options?.force });
   const provider = catalog.find((item) => item.id === providerId);
   const available = provider?.authModes.some((item) => item.id === authModeId) ?? false;
 
@@ -242,7 +246,7 @@ export async function getProviderConnectionState(providerId: string, authModeId:
 }
 
 export async function listProviderConnections(): Promise<Array<{ providerId: string; connected: boolean }>> {
-  const catalog = await loadProviderCatalog({ force: true });
+  const catalog = await loadProviderCatalog();
   return catalog.map((provider) => ({
     providerId: provider.id,
     connected: provider.connected
