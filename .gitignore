@@ -1,16 +1,50 @@
-node_modules
-.next
-dist
-coverage
-playwright-report
-test-results
+# === 의존성 ===
+node_modules/
+
+# === 빌드 출력물 ===
+.next/
+dist/
+out/
+build/
 *.tsbuildinfo
+
+# === 테스트 & 커버리지 ===
+coverage/
+playwright-report/
+test-results/
+.tmp-test-db/
+
+# === 환경 변수 ===
 .env
 .env.local
+.env.*.local
+!.env.example
+
+# === 데이터베이스 ===
 data/*.db
 data/*.db-shm
 data/*.db-wal
-!.env.example
-!.gitkeep
+
+# === AI 에이전트 파일 (모든 경로) ===
 AGENTS.md
 agent.md
+**/AGENTS.md
+**/agent.md
+
+# === Next.js 자동 생성 ===
+next-env.d.ts
+
+# === OS / 에디터 ===
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/settings.json
+
+# === 로그 ===
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# === 예외 허용 ===
+!.gitkeep
