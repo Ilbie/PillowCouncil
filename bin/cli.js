@@ -1,0 +1,130 @@
+#!/usr/bin/env node
+
+const fs = require("node:fs");
+const net = require("node:net");
+const path = require("node:path");
+const { spawn } = require("node:child_process");
+const http = require("node:http");
+const open = require("open");
+
+const HOST = process.env.HOSTNAME || "127.0.0.1";
+const DEFAULT_PORT = Number.parseInt(process.env.PORT || "3000", 10);
+const SERVER_READY_TIMEOUT_MS = 20_000;
+
+function candidateServerPaths() {
+  const packageRoot = path.resolve(__dirname, "..");
+  return [
+    path.join(packageRoot, "apps", "web", ".next", "standalone", "apps", "web", "server.js"),
+    path.join(packageRoot, "apps", "web", ".next", "standalone", "server.js")
+  ];
+}
+
+function resolveStandaloneServerPath() {
+  const serverPath = candidateServerPaths().find((candidate) => fs.existsSync(candidate));
+
+  if (!serverPath) {
+    throw new Error(
+      "PillowCouncil standalone server was not found. Run `npm run build` before publishing or invoking the CLI."
+    );
+  }
+
+  return serverPath;
+}
+
+function findAvailablePort(preferredPort) {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+
+    server.once("error", (error) => {
+      if (error && typeof error === "object" && "code" in error && error.code === "EADDRINUSE") {
+        server.listen(0, HOST);
+        return;
+      }
+
+      reject(error);
+    });
+
+    server.once("listening", () => {
+      const address = server.address();
+      if (!address || typeof address === "string") {
+        server.close(() => reject(new Error("Failed to allocate a local port for PillowCouncil.")));
+        return;
+      }
+
+      server.close((error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve(address.port);
+      });
+    });
+
+    server.listen(preferredPort, HOST);
+  });
+}
+
+function waitForServer(url) {
+  const startedAt = Date.now();
+
+  return new Promise((resolve, reject) => {
+    const probe = () => {
+      const request = http.get(url, (response) => {
+        response.resume();
+        resolve();
+      });
+
+      request.on("error", () => {
+        if (Date.now() - startedAt > SERVER_READY_TIMEOUT_MS) {
+          reject(new Error(`Timed out waiting for PillowCouncil to start at ${url}.`));
+          return;
+        }
+
+        setTimeout(probe, 250);
+      });
+    };
+
+    probe();
+  });
+}
+
+async function main() {
+  const serverPath = resolveStandaloneServerPath();
+  const port = await findAvailablePort(DEFAULT_PORT);
+  const url = `http://${HOST}:${port}`;
+  const packageRoot = path.resolve(__dirname, "..");
+
+  const child = spawn(process.execPath, [serverPath], {
+    cwd: packageRoot,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      NODE_ENV: "production",
+      HOSTNAME: HOST,
+      PORT: String(port)
+    }
+  });
+
+  const shutdown = (signal) => {
+    if (!child.killed) {
+      child.kill(signal);
+    }
+  };
+
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+
+  child.once("exit", (code) => {
+    process.exit(code ?? 0);
+  });
+
+  await waitForServer(url);
+  console.log(`PillowCouncil is running at ${url}`);
+  await open(url);
+}
+
+main().catch((error) => {
+  console.error(error instanceof Error ? error.message : String(error));
+  process.exit(1);
+});

@@ -5,6 +5,6 @@ export default defineConfig({
   schema: "./packages/shared/src/schema.ts",
   dialect: "sqlite",
   dbCredentials: {
-    url: "./data/council.db"
+    url: "./data/pillow-council.db"
   }
 });

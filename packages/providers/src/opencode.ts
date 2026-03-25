@@ -1,11 +1,13 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import fs from "node:fs";
+import { createRequire } from "node:module";
 import os from "node:os";
 import net from "node:net";
 import path from "node:path";
 
 import { createOpencodeClient, type OpencodeClient } from "@opencode-ai/sdk/v2";
-import { getAppSettings, getDefaultAppSettings, type AppSettings, workspaceRoot } from "@ship-council/shared";
+import { getAppSettings, getDefaultAppSettings, getPillowCouncilHomeDir, type AppSettings } from "@pillow-council/shared";
 
 type OpencodeHandle = {
   client: OpencodeClient;
@@ -23,6 +25,7 @@ type CachedOpencodeHandle = {
 let cachedHandle: CachedOpencodeHandle | null = null;
 let factory: (() => Promise<OpencodeHandle>) | null = null;
 let handleMutationLock: Promise<void> = Promise.resolve();
+const resolveFromModule = createRequire(import.meta.url).resolve;
 
 function getDefaultDataHomeRoot(env: NodeJS.ProcessEnv = process.env): string {
   const userHome = env.USERPROFILE?.trim() || env.HOME?.trim() || os.homedir();
@@ -82,22 +85,35 @@ function getOpencodeHandleCacheKey(env: NodeJS.ProcessEnv = process.env): string
 }
 
 export function getOpencodeDirectory(): string {
-  return workspaceRoot();
+  return getPillowCouncilHomeDir();
 }
 
-function getOpencodeLauncherPath(): string {
-  const root = workspaceRoot();
-  const launcherPath = path.join(root, "node_modules", "opencode-ai", "bin", "opencode");
-  if (!existsSync(launcherPath)) {
+function ensureDirectory(dirPath: string): void {
+  fs.mkdirSync(dirPath, { recursive: true });
+}
+
+export function resolveOpencodeLauncherPathForTests(
+  resolvePackageJson: (request: string) => string = resolveFromModule,
+  pathExists: (filePath: string) => boolean = existsSync
+): string {
+  const packageJsonPath = resolvePackageJson("opencode-ai/package.json");
+  const launcherPath = path.join(path.dirname(packageJsonPath), "bin", "opencode");
+
+  if (!pathExists(launcherPath)) {
     throw new Error("OpenCode launcher was not found in node_modules. Run `npm install` to install opencode-ai first.");
   }
 
   return launcherPath;
 }
 
+function getOpencodeLauncherPath(): string {
+  return resolveOpencodeLauncherPathForTests();
+}
+
 async function startOpencodeServer(): Promise<OpencodeHandle["server"]> {
   const launcherPath = getOpencodeLauncherPath();
-  const root = workspaceRoot();
+  const root = getOpencodeDirectory();
+  ensureDirectory(root);
   const hostname = "127.0.0.1";
   const port = await new Promise<number>((resolve, reject) => {
     const server = net.createServer();

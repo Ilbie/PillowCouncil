@@ -1,4 +1,4 @@
-import { getMcpSettingsState, mcpSettingsPayloadSchema, saveMcpSettingsState } from "@ship-council/providers";
+import { getMcpSettingsState, mcpSettingsPayloadSchema, saveMcpSettingsState } from "@pillow-council/providers";
 
 import { withErrorHandler } from "@/app/api/_utils";
 

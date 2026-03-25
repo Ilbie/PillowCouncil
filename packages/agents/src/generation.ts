@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 
 import { z } from "zod";
 
-import { SESSION_LANGUAGES, type PresetDefinition, type SessionLanguage } from "@ship-council/shared";
+import { SESSION_LANGUAGES, type PresetDefinition, type SessionLanguage } from "@pillow-council/shared";
 
 import {
   CUSTOM_PRESET_ID_PREFIX,

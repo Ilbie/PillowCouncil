@@ -1,9 +1,10 @@
-import type { DebateIntensity, SessionLanguage } from "@ship-council/shared";
+import type { DebateIntensity, SessionLanguage } from "@pillow-council/shared";
 
 export type UiLocale = SessionLanguage;
 export type DecisionSectionKey = "alternatives" | "risks" | "assumptions" | "openQuestions" | "nextActions";
 
-export const UI_LOCALE_STORAGE_KEY = "ship-council-ui-locale";
+export const UI_LOCALE_STORAGE_KEY = "pillow-council-ui-locale";
+export const LEGACY_UI_LOCALE_STORAGE_KEY = "ship-council-ui-locale";
 
 export const UI_LOCALE_OPTIONS: Array<{ value: UiLocale; label: string }> = [
   { value: "ko", label: "한국어" },
@@ -19,7 +20,7 @@ const DATE_LOCALES: Record<UiLocale, string> = {
 
 const COPY = {
   ko: {
-    appBadge: "Ship Council MVP",
+    appBadge: "PillowCouncil MVP",
     headerTitle: "실시간 패널 토론으로 결론까지 정리합니다",
     headerDescription:
       "공급사 연결은 OpenCode에 맡기고, 세션에서는 주제와 프리셋만 정합니다. 실행이 시작되면 라운드와 메시지가 실시간으로 쌓입니다.",
@@ -82,6 +83,7 @@ const COPY = {
       languageLabel: "세션 언어",
       webSearchLabel: "웹 검색",
       webSearchHint: "필요할 때만 웹 검색 도구를 사용해 최신 정보를 확인합니다.",
+      webSearchUnusedWarning: "웹 검색을 허용했지만 이번 실행에서는 검색 도구 호출이 발생하지 않았습니다. 최신 근거나 외부 데이터를 꼭 보게 하려면 주제에 뉴스·통계·경쟁사·정책 자료를 명시하세요.",
       debateIntensityLabel: "반복 횟수",
       debateIntensityHint: "의견 -> 반박 사이클을 몇 번 반복할지 정합니다.",
       selectedPreset: "선택한 프리셋",
@@ -169,7 +171,7 @@ const COPY = {
     }
   },
   en: {
-    appBadge: "Ship Council MVP",
+    appBadge: "PillowCouncil MVP",
     headerTitle: "Run the panel live and watch the debate build in real time",
     headerDescription:
       "OpenCode owns the provider connection. Sessions only capture the topic and preset, then stream progress into the timeline as rounds finish.",
@@ -232,6 +234,7 @@ const COPY = {
       languageLabel: "Session language",
       webSearchLabel: "Web search",
       webSearchHint: "Allow the model to use web search when it needs fresher external information.",
+      webSearchUnusedWarning: "Web search was allowed for this run, but no web-search tool call was used. If you need fresh external evidence, say so directly in the topic with news, stats, competitors, or policy references.",
       debateIntensityLabel: "Cycle count",
       debateIntensityHint: "Controls how many opinion -> rebuttal loops the panel will run.",
       selectedPreset: "Selected preset",
@@ -319,7 +322,7 @@ const COPY = {
     }
   },
   ja: {
-    appBadge: "Ship Council MVP",
+    appBadge: "PillowCouncil MVP",
     headerTitle: "パネル討論をリアルタイムで進めて結論まで整理します",
     headerDescription:
       "プロバイダー接続は OpenCode に任せ、セッションではテーマとプリセットだけを設定します。実行が始まると各ラウンドが順に表示されます。",
@@ -382,6 +385,7 @@ const COPY = {
       languageLabel: "セッション言語",
       webSearchLabel: "ウェブ検索",
       webSearchHint: "必要なときだけウェブ検索ツールを使って最新情報を確認します。",
+      webSearchUnusedWarning: "今回の実行ではウェブ検索を許可していましたが、検索ツール呼び出しは使われませんでした。最新の外部根拠が必要なら、ニュース・統計・競合・政策資料をトピックに明記してください。",
       debateIntensityLabel: "反復回数",
       debateIntensityHint: "意見 -> 反論のサイクルを何回繰り返すかを決めます。",
       selectedPreset: "選択したプリセット",
@@ -484,6 +488,22 @@ export function getPreferredUiLocale(): UiLocale {
   }
 
   return "en";
+}
+
+export function resolveStoredUiLocale(
+  storedLocale: string | null,
+  legacyStoredLocale: string | null,
+  fallbackLocale: UiLocale
+): UiLocale {
+  if (isUiLocale(storedLocale)) {
+    return storedLocale;
+  }
+
+  if (isUiLocale(legacyStoredLocale)) {
+    return legacyStoredLocale;
+  }
+
+  return fallbackLocale;
 }
 
 export function isUiLocale(value: string | null | undefined): value is UiLocale {

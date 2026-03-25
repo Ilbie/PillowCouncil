@@ -1,8 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import os from "node:os";
 
 let testDatabasePathOverride: string | null = null;
+
+export function getPillowCouncilHomeDir(homeDir = os.homedir()): string {
+  return path.join(homeDir, ".pillow-council");
+}
 
 export function createId(prefix: string): string {
   return `${prefix}_${crypto.randomUUID().replace(/-/g, "")}`;
@@ -32,10 +37,35 @@ export function workspaceRoot(fromDir = process.cwd()): string {
 
 export function databasePath(): string {
   if (testDatabasePathOverride) {
+    migrateLegacyDatabasePath(testDatabasePathOverride);
     return testDatabasePathOverride;
   }
 
-  return path.resolve(workspaceRoot(), "data", "council.db");
+  const filePath = path.join(getPillowCouncilHomeDir(), "data", "pillow-council.db");
+  migrateLegacyDatabasePath(filePath);
+  return filePath;
+}
+
+function migrateLegacyDatabasePath(targetPath: string): void {
+  const legacyPaths = new Set<string>([
+    targetPath.endsWith("pillow-council.db") ? targetPath.replace(/pillow-council\.db$/, "council.db") : targetPath,
+    path.resolve(workspaceRoot(), "data", "pillow-council.db"),
+    path.resolve(workspaceRoot(), "data", "council.db")
+  ]);
+
+  if (fs.existsSync(targetPath)) {
+    return;
+  }
+
+  for (const legacyPath of legacyPaths) {
+    if (legacyPath === targetPath || !fs.existsSync(legacyPath)) {
+      continue;
+    }
+
+    ensureParentDirectory(targetPath);
+    fs.renameSync(legacyPath, targetPath);
+    return;
+  }
 }
 
 export function setDatabasePathForTests(filePath: string | null): void {

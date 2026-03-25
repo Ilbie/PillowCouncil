@@ -1,4 +1,4 @@
-import { getSkillsSettingsState, saveSkillsSettingsState, skillsSettingsPayloadSchema } from "@ship-council/providers";
+import { getSkillsSettingsState, saveSkillsSettingsState, skillsSettingsPayloadSchema } from "@pillow-council/providers";
 
 import { withErrorHandler } from "@/app/api/_utils";
 

@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import type { McpLocalConfig, McpRemoteConfig, McpStatus } from "@opencode-ai/sdk/v2";
-import { workspaceRoot, getAppSettings, saveAppSettings, type AppSettings } from "@ship-council/shared";
+import { getPillowCouncilHomeDir, getAppSettings, saveAppSettings, type AppSettings } from "@pillow-council/shared";
 import { z } from "zod";
 
 import { getOpencodeClient, getOpencodeDirectory, disposeOpencodeHandle } from "./opencode";
@@ -79,8 +79,20 @@ export type SkillsSettingsState = {
   available: AvailableSkill[];
 };
 
-const ENABLED_SKILLS_DIR = path.join(workspaceRoot(), ".opencode", "skills");
-const DISABLED_SKILLS_DIR = path.join(workspaceRoot(), ".opencode", "skills-disabled");
+function getEnabledSkillsDir(): string {
+  return path.join(getPillowCouncilHomeDir(), "skills");
+}
+
+function getDisabledSkillsDir(): string {
+  return path.join(getPillowCouncilHomeDir(), "skills-disabled");
+}
+
+export function getManagedSkillDirectoriesForTests(): { enabled: string; disabled: string } {
+  return {
+    enabled: getEnabledSkillsDir(),
+    disabled: getDisabledSkillsDir()
+  };
+}
 
 function withRuntimeFlagPatch(patch: Pick<AppSettings, "enableMcp" | "enableSkills">): AppSettings {
   const current = getAppSettings();
@@ -152,8 +164,8 @@ async function readManagedSkillsFrom(rootDir: string, enabled: boolean): Promise
 
 async function readManagedSkills(): Promise<ManagedSkill[]> {
   const [enabledSkills, disabledSkills] = await Promise.all([
-    readManagedSkillsFrom(ENABLED_SKILLS_DIR, true),
-    readManagedSkillsFrom(DISABLED_SKILLS_DIR, false)
+    readManagedSkillsFrom(getEnabledSkillsDir(), true),
+    readManagedSkillsFrom(getDisabledSkillsDir(), false)
   ]);
 
   return [...enabledSkills, ...disabledSkills].sort((left, right) => left.name.localeCompare(right.name));
@@ -164,8 +176,11 @@ async function removeDirectoryIfExists(dirPath: string): Promise<void> {
 }
 
 async function syncManagedSkills(skills: z.infer<typeof managedSkillSchema>[]): Promise<void> {
-  await ensureDirectory(ENABLED_SKILLS_DIR);
-  await ensureDirectory(DISABLED_SKILLS_DIR);
+  const enabledSkillsDir = getEnabledSkillsDir();
+  const disabledSkillsDir = getDisabledSkillsDir();
+
+  await ensureDirectory(enabledSkillsDir);
+  await ensureDirectory(disabledSkillsDir);
 
   const existing = await readManagedSkills();
   const desiredNames = new Set(skills.map((skill) => skill.name));
@@ -178,8 +193,8 @@ async function syncManagedSkills(skills: z.infer<typeof managedSkillSchema>[]): 
 
   await Promise.all(
     skills.map(async (skill) => {
-      const targetRoot = skill.enabled ? ENABLED_SKILLS_DIR : DISABLED_SKILLS_DIR;
-      const otherRoot = skill.enabled ? DISABLED_SKILLS_DIR : ENABLED_SKILLS_DIR;
+      const targetRoot = skill.enabled ? enabledSkillsDir : disabledSkillsDir;
+      const otherRoot = skill.enabled ? disabledSkillsDir : enabledSkillsDir;
       const targetDir = path.join(targetRoot, skill.name);
       await removeDirectoryIfExists(path.join(otherRoot, skill.name));
       await ensureDirectory(targetDir);

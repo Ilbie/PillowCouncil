@@ -1,4 +1,4 @@
-import type { AgentDefinition, PresetDefinition } from "@ship-council/shared";
+import type { AgentDefinition, PresetDefinition } from "@pillow-council/shared";
 
 function agent(
   key: string,

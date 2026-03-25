@@ -1,22 +1,33 @@
 {
-  "name": "ship-council",
+  "name": "pillow-council",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
+  "bin": {
+    "pillow-council": "bin/cli.js"
+  },
+  "files": [
+    "bin",
+    "apps/web/.next/standalone",
+    "apps/web/.next/static",
+    "apps/web/package.json",
+    "README.md"
+  ],
   "packageManager": "pnpm@9.15.4",
   "workspaces": [
     "apps/*",
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev --workspace @ship-council/web",
-    "dev:e2e": "tsx scripts/reset-db.ts && npm run dev:e2e --workspace @ship-council/web",
-    "dev:web": "npm run dev --workspace @ship-council/web",
-    "build": "npm run build --workspace @ship-council/web && npm run typecheck",
-    "typecheck": "npm run typecheck --workspace @ship-council/shared && npm run typecheck --workspace @ship-council/agents && npm run typecheck --workspace @ship-council/providers && npm run typecheck --workspace @ship-council/orchestration && npm run typecheck --workspace @ship-council/exports && npm run typecheck --workspace @ship-council/web",
+    "dev": "npm run dev --workspace @pillow-council/web",
+    "dev:e2e": "tsx scripts/reset-db.ts && npm run dev:e2e --workspace @pillow-council/web",
+    "dev:web": "npm run dev --workspace @pillow-council/web",
+    "build": "npm run build --workspace @pillow-council/web && npm run typecheck",
+    "typecheck": "npm run typecheck --workspace @pillow-council/shared && npm run typecheck --workspace @pillow-council/agents && npm run typecheck --workspace @pillow-council/providers && npm run typecheck --workspace @pillow-council/orchestration && npm run typecheck --workspace @pillow-council/exports && npm run typecheck --workspace @pillow-council/web",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "db:inspect": "tsx scripts/inspect-db.ts"
+    "db:inspect": "tsx scripts/inspect-db.ts",
+    "prepack": "npm run build"
   },
   "devDependencies": {
     "@playwright/test": "^1.54.0",
@@ -32,6 +43,7 @@
   },
   "dependencies": {
     "@opencode-ai/sdk": "^1.2.27",
+    "open": "^10.1.2",
     "opencode-ai": "^1.2.27",
     "zod-to-json-schema": "^3.25.1"
   }

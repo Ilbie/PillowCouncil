@@ -1,4 +1,4 @@
-import { createId, nowIso, type MessageRecord, type RoundRecord } from "@ship-council/shared";
+import { createId, nowIso, type MessageRecord, type RoundRecord } from "@pillow-council/shared";
 
 export function createRound(
   sessionId: string,

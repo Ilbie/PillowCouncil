@@ -1,4 +1,4 @@
-import type { RunStreamEvent } from "@ship-council/shared";
+import type { RunStreamEvent } from "@pillow-council/shared";
 
 type StreamListener = (event: RunStreamEvent) => void;
 

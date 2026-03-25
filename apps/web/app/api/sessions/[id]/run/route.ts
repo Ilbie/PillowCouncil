@@ -1,5 +1,5 @@
-import { processSessionRun } from "@ship-council/orchestration";
-import { stopCurrentRun } from "@ship-council/shared";
+import { processSessionRun } from "@pillow-council/orchestration";
+import { stopCurrentRun } from "@pillow-council/shared";
 
 import { withErrorHandler } from "@/app/api/_utils";
 

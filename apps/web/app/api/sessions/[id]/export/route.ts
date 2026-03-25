@@ -1,5 +1,5 @@
-import { toExportJson, toMarkdown } from "@ship-council/exports";
-import { getSessionDetail } from "@ship-council/shared";
+import { toExportJson, toMarkdown } from "@pillow-council/exports";
+import { getSessionDetail } from "@pillow-council/shared";
 
 export const runtime = "nodejs";
 

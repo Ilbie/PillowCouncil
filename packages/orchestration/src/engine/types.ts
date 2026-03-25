@@ -1,4 +1,4 @@
-import type { ProviderUsage } from "@ship-council/providers";
+import type { ProviderUsage } from "@pillow-council/providers";
 import type {
   DebateState,
   DecisionSummary,
@@ -7,7 +7,7 @@ import type {
   RoundRecord,
   RunStreamEvent,
   UsageSummary
-} from "@ship-council/shared";
+} from "@pillow-council/shared";
 
 export type OrchestratedRound = RoundRecord & {
   messages: MessageRecord[];

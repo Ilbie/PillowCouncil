@@ -1,5 +1,5 @@
-import type { LiveMessageRecord, PresetDefinition, SessionCreateInput, SessionLanguage, SessionListResponse } from "@ship-council/shared";
-import type { McpSettingsState, SkillsSettingsState } from "@ship-council/providers";
+import type { LiveMessageRecord, PresetDefinition, SessionCreateInput, SessionLanguage, SessionListResponse } from "@pillow-council/shared";
+import type { McpSettingsState, SkillsSettingsState } from "@pillow-council/providers";
 
 import type { ProviderOauthPendingState } from "@/lib/provider-auth";
 

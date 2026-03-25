@@ -28,7 +28,7 @@ function getSafeHref(href: string | undefined): string | null {
   }
 
   try {
-    const url = new URL(normalizedHref, "https://ship-council.local");
+    const url = new URL(normalizedHref, "https://pillow-council.local");
     return url.protocol === "http:" || url.protocol === "https:" || url.protocol === "mailto:" ? normalizedHref : null;
   } catch {
     return null;

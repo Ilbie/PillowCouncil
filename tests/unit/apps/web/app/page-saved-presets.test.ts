@@ -38,8 +38,8 @@ const councilAppSpy = vi.fn((props: { initialPresets: Array<{ id: string }> }) =
   })
 );
 
-vi.mock("@ship-council/shared", async () => {
-  const actual = await vi.importActual<typeof import("@ship-council/shared")>("@ship-council/shared");
+vi.mock("@pillow-council/shared", async () => {
+  const actual = await vi.importActual<typeof import("@pillow-council/shared")>("@pillow-council/shared");
   return {
     ...actual,
     listSessions,
@@ -49,7 +49,7 @@ vi.mock("@ship-council/shared", async () => {
   };
 });
 
-vi.mock("@ship-council/providers", () => ({
+vi.mock("@pillow-council/providers", () => ({
   loadProviderCatalog,
   getDefaultProviderId,
   getDefaultModelId,
@@ -57,7 +57,7 @@ vi.mock("@ship-council/providers", () => ({
   getProviderConnectionState
 }));
 
-vi.mock("@ship-council/agents", () => ({
+vi.mock("@pillow-council/agents", () => ({
   PRESET_DEFINITIONS: [
     { id: "saas-founder", name: "SaaS Founder", description: "desc", agents: [] },
     { id: "product-scope", name: "Product Scope", description: "desc", agents: [] }
@@ -65,11 +65,11 @@ vi.mock("@ship-council/agents", () => ({
 }));
 
 vi.mock("../../../../../apps/web/components/council-app", () => ({
-  CouncilApp: councilAppSpy
+  PillowCouncilApp: councilAppSpy
 }));
 
 describe("HomePage saved presets bootstrap", () => {
-  it("passes built-in and DB-saved presets into CouncilApp", async () => {
+  it("passes built-in and DB-saved presets into PillowCouncilApp", async () => {
     const { default: HomePage } = await import("../../../../../apps/web/app/page");
 
     const element = await HomePage();

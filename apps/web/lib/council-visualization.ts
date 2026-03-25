@@ -1,5 +1,5 @@
-import type { LiveMessageRecord, MessageRecord, PanelPreset, RunStage, SessionDetailResponse } from "@ship-council/shared";
-import { getExpectedStageSpeakerCount, parseRebuttalTargetHeader } from "@ship-council/shared/types";
+import type { LiveMessageRecord, MessageRecord, PanelPreset, RunStage, SessionDetailResponse } from "@pillow-council/shared";
+import { getExpectedStageSpeakerCount, parseRebuttalTargetHeader } from "@pillow-council/shared/types";
 
 export type VisualizationStageStatus = "pending" | "active" | "completed";
 export type VisualizationAgentStatus = "queued" | "active" | "done";

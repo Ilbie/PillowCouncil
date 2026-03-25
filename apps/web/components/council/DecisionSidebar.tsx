@@ -1,7 +1,7 @@
-import type { FC } from "react";
-import { AlertTriangle, CheckCircle2, Download, FileText, Info, RefreshCcw, Sparkles } from "lucide-react";
+import { memo, type FC } from "react";
+import { AlertTriangle, CheckCircle2, Download, FileText, Info, RefreshCcw, Sparkles, Square } from "lucide-react";
 
-import type { SessionDetailResponse } from "@ship-council/shared";
+import type { SessionDetailResponse } from "@pillow-council/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,7 +22,7 @@ type DecisionSidebarProps = {
   onStop: () => void;
 };
 
-export const DecisionSidebar: FC<DecisionSidebarProps> = ({
+export const DecisionSidebar: FC<DecisionSidebarProps> = memo(function DecisionSidebar({
   copy,
   uiLocale,
   detail,
@@ -32,7 +32,7 @@ export const DecisionSidebar: FC<DecisionSidebarProps> = ({
   isSelectedSessionRunning,
   onRerun,
   onStop
-}) => {
+}) {
   return (
     <aside className="council-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto">
       <div className="p-5 border-b border-gray-800 flex items-center justify-between bg-[#121826]">
@@ -50,6 +50,18 @@ export const DecisionSidebar: FC<DecisionSidebarProps> = ({
           >
             <RefreshCcw size={14} />
           </Button>
+          {isSelectedSessionRunning ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-9 gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 text-red-200 hover:bg-red-500/20 hover:text-red-100"
+              onClick={onStop}
+              disabled={!selectedId || isSubmitting || isStoppingRun}
+            >
+              <Square size={12} />
+              {copy.decision.stop}
+            </Button>
+          ) : null}
           {selectedId ? (
             <a
               href={`/api/sessions/${selectedId}/export?format=json`}
@@ -102,7 +114,7 @@ export const DecisionSidebar: FC<DecisionSidebarProps> = ({
                   {getRiskSectionLabel(uiLocale)}
                 </h3>
                 <ul className="bg-red-500/5 border border-red-500/20 rounded-xl p-4 text-sm text-gray-300 space-y-3">
-                  {detail.decision.risks.map((risk, index) => (
+                  {detail.decision.risks.map((risk: string, index: number) => (
                     <li key={`${risk}-${index}`} className="flex items-start gap-2 text-sm leading-snug text-gray-300">
                       <span className="text-red-500 mt-0.5">•</span>
                       <MarkdownContent content={risk} className="flex-1 text-sm text-gray-300 [&_p]:my-0" />
@@ -126,6 +138,8 @@ export const DecisionSidebar: FC<DecisionSidebarProps> = ({
       </div>
     </aside>
   );
-};
+});
+
+DecisionSidebar.displayName = "DecisionSidebar";
 
 export default DecisionSidebar;

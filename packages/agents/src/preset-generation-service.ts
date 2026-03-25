@@ -1,12 +1,12 @@
 import { z } from "zod";
 
-import type { PresetDefinition, ProviderOption } from "@ship-council/shared";
+import type { PresetDefinition, ProviderOption } from "@pillow-council/shared";
 import {
-  createCouncilProvider,
+  createPillowCouncilProvider,
   getProviderOption as defaultGetProviderOption,
   loadProviderCatalog as defaultLoadProviderCatalog,
-  type CouncilProvider
-} from "@ship-council/providers";
+  type PillowCouncilProvider
+} from "@pillow-council/providers";
 
 import { CUSTOM_PRESET_ID_PREFIX } from "./constants";
 import {
@@ -17,7 +17,7 @@ import {
 } from "./generation";
 
 type PresetGenerationDependencies = {
-  createCouncilProvider?: () => Pick<CouncilProvider, "generateJson">;
+  createPillowCouncilProvider?: () => Pick<PillowCouncilProvider, "generateJson">;
   loadProviderCatalog?: () => Promise<ProviderOption[]>;
   getProviderOption?: (providerId: string, providers: ProviderOption[]) => ProviderOption | null | undefined;
 };
@@ -63,7 +63,7 @@ export async function generatePreset(
 ): Promise<PresetDefinition> {
   const loadProviderCatalog = dependencies.loadProviderCatalog ?? defaultLoadProviderCatalog;
   const getProviderOption = dependencies.getProviderOption ?? defaultGetProviderOption;
-  const providerRuntime = (dependencies.createCouncilProvider ?? createCouncilProvider)();
+  const providerRuntime = (dependencies.createPillowCouncilProvider ?? createPillowCouncilProvider)();
   const catalog = await loadProviderCatalog();
 
   ensureAllowedProvider(input, catalog, getProviderOption);
@@ -74,7 +74,7 @@ export async function generatePreset(
     schema: buildGeneratedPresetSchema(input.agentCount),
     retries: 2,
     system: [
-      "You design balanced multi-agent debate presets for Ship Council.",
+      "You design balanced multi-agent debate presets for PillowCouncil.",
       "Create a tight preset that helps a panel make a concrete decision.",
       "Each agent must have a distinct perspective with practical tension between them.",
       "At least one agent should pressure-test assumptions or execution risk.",

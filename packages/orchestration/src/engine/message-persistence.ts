@@ -1,5 +1,5 @@
-import type { ProviderUsage } from "@ship-council/providers";
-import type { MessageRecord, UsageSummary } from "@ship-council/shared";
+import type { ProviderUsage } from "@pillow-council/providers";
+import type { MessageRecord, UsageSummary } from "@pillow-council/shared";
 
 import type { ContextState, OrchestratedRound, RunSessionCallbacks } from "./types";
 

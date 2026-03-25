@@ -1,5 +1,5 @@
 {
-  "name": "@ship-council/agents",
+  "name": "@pillow-council/agents",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -10,8 +10,8 @@
     "./preset-generation-service": "./src/preset-generation-service.ts"
   },
   "dependencies": {
-    "@ship-council/providers": "0.1.0",
-    "@ship-council/shared": "0.1.0"
+    "@pillow-council/providers": "0.1.0",
+    "@pillow-council/shared": "0.1.0"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json"

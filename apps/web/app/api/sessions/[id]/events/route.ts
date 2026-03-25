@@ -1,5 +1,5 @@
-import { getSession } from "@ship-council/shared";
-import { subscribeToRunStream } from "@ship-council/orchestration";
+import { getSession } from "@pillow-council/shared";
+import { subscribeToRunStream } from "@pillow-council/orchestration";
 
 export const runtime = "nodejs";
 

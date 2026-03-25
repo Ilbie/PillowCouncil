@@ -1,6 +1,6 @@
-import { presetGenerationInputSchema } from "@ship-council/agents/generation";
-import { PresetGenerationError, generatePreset } from "@ship-council/agents/preset-generation-service";
-import { saveGeneratedPreset } from "@ship-council/shared";
+import { presetGenerationInputSchema } from "@pillow-council/agents/generation";
+import { PresetGenerationError, generatePreset } from "@pillow-council/agents/preset-generation-service";
+import { saveGeneratedPreset } from "@pillow-council/shared";
 
 import { RouteError, withErrorHandler } from "@/app/api/_utils";
 

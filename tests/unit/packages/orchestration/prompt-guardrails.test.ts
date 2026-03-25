@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { CouncilProvider, ProviderUsage } from "../../../../packages/providers/src/runtime";
-import { formatAgentSystem, formatFinalPrompt, formatModeratorPrompt, formatOpinionPrompt, formatRebuttalPrompt } from "../../../../packages/orchestration/src/prompts";
-import { runCouncilSession } from "../../../../packages/orchestration/src/run-session";
+import type { PillowCouncilProvider, ProviderUsage } from "../../../../packages/providers/src/runtime";
+import { formatAgentSystem, formatFinalPrompt, formatModeratorPrompt, formatOpinionPrompt, formatRebuttalPrompt, formatResearchPlanPrompt } from "../../../../packages/orchestration/src/prompts";
+import { runPillowCouncilSession } from "../../../../packages/orchestration/src/run-session";
 import type { AgentDefinition, SessionRecord } from "../../../../packages/shared/src/types";
 
 const usage: ProviderUsage = {
@@ -70,7 +70,7 @@ function createSession(): SessionRecord {
   };
 }
 
-function createProvider(callLog: Array<{ system: string; prompt: string }>): CouncilProvider {
+function createProvider(callLog: Array<{ system: string; prompt: string }>): PillowCouncilProvider {
   return {
     async generateText(input) {
       return {
@@ -278,10 +278,28 @@ describe("orchestration prompt guardrails", () => {
     expect(prompt).toContain("If no material risks remain, return an empty risks array.");
   });
 
+  it("nudges research planning toward one bounded search when external facts may matter", () => {
+    const prompt = formatResearchPlanPrompt({
+      session: {
+        ...createSession(),
+        enableWebSearch: true,
+        prompt: "Compare the latest 2026 competitor pricing and policy changes before recommending a launch plan."
+      },
+      agent: agents[0],
+      stage: "opinion",
+      cycleNumber: 1,
+      debateState: createDebateState(),
+      recentMessages: [],
+      retrievedMemories: []
+    });
+
+    expect(prompt).toContain("If web search is enabled and the turn could benefit from current external facts, default to one bounded search instead of skipping research.");
+  });
+
   it("adds topic-guardrail instructions when refreshing debate state", async () => {
     const callLog: Array<{ system: string; prompt: string }> = [];
 
-    await runCouncilSession({
+    await runPillowCouncilSession({
       session: createSession(),
       runId: "run-1",
       provider: createProvider(callLog)
@@ -299,7 +317,7 @@ describe("orchestration prompt guardrails", () => {
   it("softens rebuttal-target selection so it does not optimize for pure attack", async () => {
     const callLog: Array<{ system: string; prompt: string }> = [];
 
-    await runCouncilSession({
+    await runPillowCouncilSession({
       session: createSession(),
       runId: "run-attack-check",
       provider: createProvider(callLog)
@@ -314,7 +332,7 @@ describe("orchestration prompt guardrails", () => {
   });
 
   it("allows the final decision schema to accept an empty risk list when the topic is ideation-focused", async () => {
-    const result = await runCouncilSession({
+    const result = await runPillowCouncilSession({
       session: createSession(),
       runId: "run-2",
       provider: createProvider([])

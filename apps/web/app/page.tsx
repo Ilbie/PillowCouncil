@@ -1,7 +1,7 @@
-import { PRESET_DEFINITIONS } from "@ship-council/agents";
-import { countSessions, getAppSettings, listSavedPresets, listSessions } from "@ship-council/shared";
+import { PRESET_DEFINITIONS } from "@pillow-council/agents";
+import { countSessions, getAppSettings, listSavedPresets, listSessions } from "@pillow-council/shared";
 
-import { CouncilApp } from "@/components/council-app";
+import { PillowCouncilApp } from "@/components/council-app";
 import { SESSION_HISTORY_PAGE_SIZE } from "@/lib/council-app-types";
 import { mergePersistedPresets } from "@/lib/council-app-helpers";
 
@@ -21,7 +21,7 @@ export default async function HomePage() {
   };
 
   return (
-    <CouncilApp
+    <PillowCouncilApp
       initialPresets={initialPresets}
       initialSessions={sessions}
       initialTotalSessionCount={totalSessionCount}

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import type { CouncilProvider, ProviderUsage } from "../../../../packages/providers/src/runtime";
-import { runCouncilSession } from "../../../../packages/orchestration/src/run-session";
+import type { PillowCouncilProvider, ProviderUsage } from "../../../../packages/providers/src/runtime";
+import { runPillowCouncilSession } from "../../../../packages/orchestration/src/run-session";
 import type { AgentDefinition, MessageRecord, SessionRecord } from "../../../../packages/shared/src/types";
 
 const usage: ProviderUsage = {
@@ -75,7 +75,7 @@ type CallLogEntry = {
   enableWebSearch?: boolean;
 };
 
-function createAgenticProvider(callLog: CallLogEntry[]): CouncilProvider {
+function createAgenticProvider(callLog: CallLogEntry[]): PillowCouncilProvider {
   let routeInvocation = 0;
 
   return {
@@ -269,7 +269,7 @@ describe("agentic orchestration improvements", () => {
   it("compiles runtime personas before the first speaker turn and uses compiled personas in messages", async () => {
     const callLog: CallLogEntry[] = [];
 
-    const result = await runCouncilSession({
+    const result = await runPillowCouncilSession({
       session: createSession(),
       runId: "run-compile",
       provider: createAgenticProvider(callLog)
@@ -282,7 +282,7 @@ describe("agentic orchestration improvements", () => {
   it("injects a system intervention message when the debate drifts off-topic", async () => {
     const createdMessages: MessageRecord[] = [];
 
-    await runCouncilSession({
+    await runPillowCouncilSession({
       session: createSession(),
       runId: "run-intervention",
       provider: createAgenticProvider([]),
@@ -302,7 +302,7 @@ describe("agentic orchestration improvements", () => {
   });
 
   it("routes only the moderator-selected subset of speakers instead of forcing every agent to speak", async () => {
-    const result = await runCouncilSession({
+    const result = await runPillowCouncilSession({
       session: createSession(),
       runId: "run-routing",
       provider: createAgenticProvider([])
@@ -318,12 +318,15 @@ describe("agentic orchestration improvements", () => {
   it("runs a research phase before speaking and grounds the speaking prompt with research notes", async () => {
     const callLog: CallLogEntry[] = [];
 
-    await runCouncilSession({
+    await runPillowCouncilSession({
       session: createSession(),
       runId: "run-research",
       provider: createAgenticProvider(callLog)
     });
 
+    const researchPlanningCall = callLog.find((entry) =>
+      entry.method === "generateJson" && entry.prompt.includes('"shouldResearch":false')
+    );
     const researchCallIndex = callLog.findIndex((entry) =>
       entry.system.includes("Run a short research phase before the agent speaks")
     );
@@ -331,6 +334,8 @@ describe("agentic orchestration improvements", () => {
       entry.method === "generateText" && entry.prompt.includes("Research notes:")
     );
 
+    expect(researchPlanningCall?.enableWebSearch).toBe(true);
+    expect(researchPlanningCall?.prompt).toContain("Web search enabled: yes");
     expect(researchCallIndex).toBeGreaterThanOrEqual(0);
     expect(speechCallIndex).toBeGreaterThan(researchCallIndex);
   });

@@ -13,16 +13,16 @@ export default defineConfig({
   },
   resolve: {
       alias: [
-        { find: "@ship-council/shared/types", replacement: fromRoot("packages/shared/src/types.ts") },
-        { find: "@ship-council/shared", replacement: fromRoot("packages/shared/src/index.ts") },
-        { find: "@ship-council/agents/constants", replacement: fromRoot("packages/agents/src/constants.ts") },
-        { find: "@ship-council/agents/generation", replacement: fromRoot("packages/agents/src/generation.ts") },
-        { find: "@ship-council/agents/preset-generation-service", replacement: fromRoot("packages/agents/src/preset-generation-service.ts") },
-        { find: "@ship-council/agents", replacement: fromRoot("packages/agents/src/index.ts") },
-        { find: "@ship-council/providers", replacement: fromRoot("packages/providers/src/index.ts") },
-        { find: "@ship-council/orchestration/prompts", replacement: fromRoot("packages/orchestration/src/prompts.ts") },
-        { find: "@ship-council/orchestration", replacement: fromRoot("packages/orchestration/src/index.ts") },
-        { find: "@ship-council/exports", replacement: fromRoot("packages/exports/src/index.ts") },
+        { find: "@pillow-council/shared/types", replacement: fromRoot("packages/shared/src/types.ts") },
+        { find: "@pillow-council/shared", replacement: fromRoot("packages/shared/src/index.ts") },
+        { find: "@pillow-council/agents/constants", replacement: fromRoot("packages/agents/src/constants.ts") },
+        { find: "@pillow-council/agents/generation", replacement: fromRoot("packages/agents/src/generation.ts") },
+        { find: "@pillow-council/agents/preset-generation-service", replacement: fromRoot("packages/agents/src/preset-generation-service.ts") },
+        { find: "@pillow-council/agents", replacement: fromRoot("packages/agents/src/index.ts") },
+        { find: "@pillow-council/providers", replacement: fromRoot("packages/providers/src/index.ts") },
+        { find: "@pillow-council/orchestration/prompts", replacement: fromRoot("packages/orchestration/src/prompts.ts") },
+        { find: "@pillow-council/orchestration", replacement: fromRoot("packages/orchestration/src/index.ts") },
+        { find: "@pillow-council/exports", replacement: fromRoot("packages/exports/src/index.ts") },
         { find: "@", replacement: fromRoot("apps/web") }
       ]
   },

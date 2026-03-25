@@ -13,17 +13,17 @@
     "jsx": "preserve",
     "baseUrl": ".",
     "paths": {
-      "@ship-council/shared": ["packages/shared/src/index.ts"],
-      "@ship-council/shared/*": ["packages/shared/src/*"],
-      "@ship-council/agents": ["packages/agents/src/index.ts"],
-      "@ship-council/agents/preset-generation-service": ["packages/agents/src/preset-generation-service.ts"],
-      "@ship-council/agents/*": ["packages/agents/src/*"],
-      "@ship-council/orchestration": ["packages/orchestration/src/index.ts"],
-      "@ship-council/orchestration/*": ["packages/orchestration/src/*"],
-      "@ship-council/providers": ["packages/providers/src/index.ts"],
-      "@ship-council/providers/*": ["packages/providers/src/*"],
-      "@ship-council/exports": ["packages/exports/src/index.ts"],
-      "@ship-council/exports/*": ["packages/exports/src/*"]
+      "@pillow-council/shared": ["packages/shared/src/index.ts"],
+      "@pillow-council/shared/*": ["packages/shared/src/*"],
+      "@pillow-council/agents": ["packages/agents/src/index.ts"],
+      "@pillow-council/agents/preset-generation-service": ["packages/agents/src/preset-generation-service.ts"],
+      "@pillow-council/agents/*": ["packages/agents/src/*"],
+      "@pillow-council/orchestration": ["packages/orchestration/src/index.ts"],
+      "@pillow-council/orchestration/*": ["packages/orchestration/src/*"],
+      "@pillow-council/providers": ["packages/providers/src/index.ts"],
+      "@pillow-council/providers/*": ["packages/providers/src/*"],
+      "@pillow-council/exports": ["packages/exports/src/index.ts"],
+      "@pillow-council/exports/*": ["packages/exports/src/*"]
     }
   }
 }

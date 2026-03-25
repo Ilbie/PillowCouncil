@@ -1,4 +1,4 @@
-import { listProviderConnections } from "@ship-council/providers";
+import { listProviderConnections } from "@pillow-council/providers";
 
 export const runtime = "nodejs";
 

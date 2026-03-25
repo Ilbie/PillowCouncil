@@ -1,4 +1,4 @@
-import type { MemorySearchResult, MessageRecord, SessionRecord } from "@ship-council/shared";
+import type { MemorySearchResult, MessageRecord, SessionRecord } from "@pillow-council/shared";
 
 import { buildMemoryQuery } from "../prompts";
 import type { ContextState } from "./types";

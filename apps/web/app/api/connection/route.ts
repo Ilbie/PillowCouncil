@@ -1,5 +1,5 @@
-import { getProviderConnectionState, getProviderOption, loadProviderCatalog, parseAuthModeId, saveApiKeyAuth } from "@ship-council/providers";
-import { appSettingsSchema, getAppSettings, saveConnectionSettings } from "@ship-council/shared";
+import { getProviderConnectionState, getProviderOption, loadProviderCatalog, parseAuthModeId, saveApiKeyAuth } from "@pillow-council/providers";
+import { appSettingsSchema, getAppSettings, saveConnectionSettings } from "@pillow-council/shared";
 import { z } from "zod";
 
 import { RouteError, withErrorHandler } from "@/app/api/_utils";

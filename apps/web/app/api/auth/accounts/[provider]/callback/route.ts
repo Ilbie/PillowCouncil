@@ -1,4 +1,4 @@
-import { completeProviderOauth } from "@ship-council/providers";
+import { completeProviderOauth } from "@pillow-council/providers";
 
 export const runtime = "nodejs";
 

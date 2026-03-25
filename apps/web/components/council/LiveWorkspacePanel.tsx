@@ -3,24 +3,27 @@ import { CheckCircle2 } from "lucide-react";
 
 import type { DebateVisualization } from "@/lib/council-visualization";
 import { getAgentVisual } from "@/lib/council-agent-visuals";
+import { getMessageKindLabel, getRoundStageLabel, getStatusLabel, type UiLocale, getUiCopy } from "@/lib/i18n";
 import {
   getActivityFeedLabel,
   getAgentBoardLabel,
   getAgentStatusLabel,
   getContributionLabel,
+  getDebateProgressLabel,
+  getDetailViewLabel,
   getLiveWorkspaceDescription,
   getLiveWorkspaceLabel,
   getProgressMetricLabel,
+  getRoundLabel,
   getScrumBoardLabel,
   getSpeakerProgressLabel,
   getStageStatusLabel,
   getWaitingFeedLabel
 } from "@/lib/council-app-labels";
 import { cn } from "@/lib/utils";
-import { getMessageKindLabel, getRoundStageLabel, getStatusLabel, type UiLocale, getUiCopy } from "@/lib/i18n";
 import { Badge } from "@/components/ui/badge";
 import { SessionActivityMetricsCard } from "@/components/council/SessionActivityMetricsCard";
-import type { PresetDefinition, SessionDetailResponse } from "@ship-council/shared";
+import type { PresetDefinition, SessionDetailResponse } from "@pillow-council/shared";
 
 type LiveWorkspacePanelProps = {
   copy: ReturnType<typeof getUiCopy>;
@@ -234,7 +237,7 @@ export const LiveWorkspacePanel: FC<LiveWorkspacePanelProps> = ({
                 <h3 className="mt-2 text-lg font-semibold text-white">{copy.detail.live}</h3>
               </div>
               <Badge className="border-gray-700 bg-gray-900 text-gray-300">
-                {latestFeedMessage ? latestFeedMessage.kind : getStageStatusLabel("active", uiLocale)}
+                {latestFeedMessage ? getMessageKindLabel(latestFeedMessage.kind, uiLocale) : getStageStatusLabel("active", uiLocale)}
               </Badge>
             </div>
 
@@ -260,7 +263,7 @@ export const LiveWorkspacePanel: FC<LiveWorkspacePanelProps> = ({
                       <div className="mt-2 flex items-center justify-between">
                         <p className="text-xs text-gray-500">{getMessageKindLabel(entry.kind, uiLocale)}</p>
                         <span className="flex items-center gap-1 text-xs text-blue-400 opacity-0 transition-opacity group-hover:opacity-100">
-                          상세 보기
+                          {getDetailViewLabel(uiLocale)}
                         </span>
                       </div>
                     </>

@@ -1,12 +1,12 @@
 import type { FC } from "react";
 import { Binary, Clock3, Download, Search, Sparkles, Wand2 } from "lucide-react";
 
-import type { SessionDetailResponse } from "@ship-council/shared";
+import type { SessionDetailResponse } from "@pillow-council/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { getActivityMetricLabel, getActivityMetricsTitle } from "@/lib/council-app-labels";
 import { getDisplayRunStatusLabel } from "@/lib/council-app-helpers";
-import type { UiLocale } from "@/lib/i18n";
+import { getUiCopy, type UiLocale } from "@/lib/i18n";
 
 type SessionActivityMetricsCardProps = {
   detail: SessionDetailResponse;
@@ -14,29 +14,43 @@ type SessionActivityMetricsCardProps = {
   className?: string;
 };
 
-function formatDuration(durationMs: number): string {
+function formatDuration(durationMs: number, locale: UiLocale = "en"): string {
   if (durationMs <= 0) {
-    return "0s";
+    const units = getDurationUnits(locale);
+    return `0${units.s}`;
   }
 
   const totalSeconds = Math.floor(durationMs / 1000);
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
+  const units = getDurationUnits(locale);
 
   if (hours > 0) {
-    return `${hours}h ${minutes}m`;
+    return `${hours}${units.h} ${minutes}${units.m}`;
   }
 
   if (minutes > 0) {
-    return `${minutes}m ${seconds}s`;
+    return `${minutes}${units.m} ${seconds}${units.s}`;
   }
 
-  return `${seconds}s`;
+  return `${seconds}${units.s}`;
+}
+
+function getDurationUnits(locale: UiLocale): { h: string; m: string; s: string } {
+  switch (locale) {
+    case "ko":
+      return { h: "시간", m: "분", s: "초" };
+    case "ja":
+      return { h: "時間", m: "分", s: "秒" };
+    default:
+      return { h: "h", m: "m", s: "s" };
+  }
 }
 
 export const SessionActivityMetricsCard: FC<SessionActivityMetricsCardProps> = ({ detail, uiLocale, className }) => {
   const numberFormatter = new Intl.NumberFormat(uiLocale);
+  const copy = getUiCopy(uiLocale);
   const metricCards = [
     {
       key: "mcp",
@@ -76,7 +90,7 @@ export const SessionActivityMetricsCard: FC<SessionActivityMetricsCardProps> = (
     {
       key: "work-time",
       label: getActivityMetricLabel("workTime", uiLocale),
-      value: formatDuration(detail.activityMetrics.workDurationMs),
+      value: formatDuration(detail.activityMetrics.workDurationMs, uiLocale),
       icon: Clock3,
       accent: "text-rose-300"
     }
@@ -99,6 +113,12 @@ export const SessionActivityMetricsCard: FC<SessionActivityMetricsCardProps> = (
           })}
         </Badge>
       </div>
+
+      {detail.session.enableWebSearch && detail.activityMetrics.webSearches === 0 ? (
+        <div className="mb-4 rounded-2xl border border-amber-400/20 bg-amber-500/10 px-4 py-3 text-xs leading-5 text-amber-100">
+          {copy.session.webSearchUnusedWarning}
+        </div>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         {metricCards.map((metric) => {

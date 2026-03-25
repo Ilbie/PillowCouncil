@@ -3,8 +3,8 @@ import type {
   ProviderAuthOption,
   ProviderModelOption,
   ProviderModelVariantOption,
-  ProviderOption as CouncilProviderOption
-} from "@ship-council/shared";
+  ProviderOption as PillowCouncilProviderOption
+} from "@pillow-council/shared";
 
 import { getOpencodeClient, getOpencodeDirectory } from "./opencode";
 
@@ -56,7 +56,7 @@ type OpenCodeProvider = {
   models: Record<string, OpenCodeModel>;
 };
 
-let catalogCache: { data: CouncilProviderOption[]; expiresAt: number } | null = null;
+let catalogCache: { data: PillowCouncilProviderOption[]; expiresAt: number } | null = null;
 
 function toTitleCase(value: string): string {
   return value
@@ -220,7 +220,7 @@ function toProviderOption(input: {
   provider: OpenCodeProvider;
   authMethods: ProviderAuthMethod[];
   connectedProviders: Set<string>;
-}): CouncilProviderOption | null {
+}): PillowCouncilProviderOption | null {
   const models = Object.entries(input.provider.models ?? {})
     .map(([modelId, model]) => toModelOption(input.provider.id, modelId, model))
     .filter((model): model is ProviderModelOption => model !== null)
@@ -250,7 +250,7 @@ export function invalidateProviderCatalog(): void {
   catalogCache = null;
 }
 
-export async function loadProviderCatalog(options?: { force?: boolean }): Promise<CouncilProviderOption[]> {
+export async function loadProviderCatalog(options?: { force?: boolean }): Promise<PillowCouncilProviderOption[]> {
   if (!options?.force && catalogCache && catalogCache.expiresAt > Date.now()) {
     return catalogCache.data;
   }
@@ -292,7 +292,7 @@ export async function loadProviderCatalog(options?: { force?: boolean }): Promis
         connectedProviders
       })
     )
-    .filter((provider): provider is CouncilProviderOption => provider !== null)
+    .filter((provider): provider is PillowCouncilProviderOption => provider !== null)
     .sort((left, right) => left.label.localeCompare(right.label));
 
   catalogCache = {
@@ -305,22 +305,22 @@ export async function loadProviderCatalog(options?: { force?: boolean }): Promis
 
 export function getProviderOption(
   providerId: string,
-  options: CouncilProviderOption[] = []
-): CouncilProviderOption | undefined {
+  options: PillowCouncilProviderOption[] = []
+): PillowCouncilProviderOption | undefined {
   return options.find((provider) => provider.id === providerId);
 }
 
-export function getDefaultProviderId(options: CouncilProviderOption[] = []): string {
+export function getDefaultProviderId(options: PillowCouncilProviderOption[] = []): string {
   return options[0]?.id ?? "";
 }
 
-export function getDefaultModelId(providerId: string, options: CouncilProviderOption[] = []): string {
+export function getDefaultModelId(providerId: string, options: PillowCouncilProviderOption[] = []): string {
   const provider = getProviderOption(providerId, options) ?? options[0];
 
   return provider?.models[0]?.id ?? "";
 }
 
-export function getDefaultAuthModeId(providerId: string, options: CouncilProviderOption[] = []): string {
+export function getDefaultAuthModeId(providerId: string, options: PillowCouncilProviderOption[] = []): string {
   const provider = getProviderOption(providerId, options) ?? options[0];
   return provider?.authModes[0]?.id ?? "";
 }

@@ -2,7 +2,7 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 import { z } from "zod";
 import type { McpLocalConfig, McpRemoteConfig } from "@opencode-ai/sdk/v2";
 
-import { createId, getAppSettings, getDefaultAppSettings, nowIso, type ProviderAuthOption } from "@ship-council/shared";
+import { createId, getAppSettings, getDefaultAppSettings, nowIso, type ProviderAuthOption } from "@pillow-council/shared";
 
 import { getProviderOption, loadProviderCatalog } from "./catalog";
 import { getOpencodeClient, getOpencodeDirectory } from "./opencode";
@@ -21,7 +21,7 @@ export type TextGenerationResult = {
   usage: ProviderUsage;
 };
 
-export interface CouncilProvider {
+export interface PillowCouncilProvider {
   generateText(input: {
     provider: string;
     model: string;
@@ -79,6 +79,11 @@ type ToolActivityPart = {
   state?: unknown;
 };
 
+function isWebSearchToolName(toolName: string): boolean {
+  const normalized = toolName.trim().toLowerCase();
+  return /(?:^|[_-])web[_-]?search(?:$|[_-])/.test(normalized) || normalized.includes("codesearch");
+}
+
 function getToolPartStateStatus(state: unknown): string | null {
   if (typeof state === "string") {
     return state;
@@ -133,7 +138,7 @@ function extractActivityUsage(parts: unknown, mcpServerNames: Set<string>): Pick
       continue;
     }
 
-    if (toolName === "websearch" || toolName === "codesearch") {
+    if (isWebSearchToolName(toolName)) {
       counts.webSearches += 1;
       continue;
     }
@@ -145,6 +150,8 @@ function extractActivityUsage(parts: unknown, mcpServerNames: Set<string>): Pick
 
   return counts;
 }
+
+export const extractActivityUsageForTests = extractActivityUsage;
 
 async function getConfiguredMcpServerNames(input: {
   client: Awaited<ReturnType<typeof getOpencodeClient>>;
@@ -352,7 +359,7 @@ async function promptOpenCode<T>(input: {
   const skillNames = await getAvailableSkillNames({ client, directory, globalEnabled: settings.enableSkills });
   const created = await client.session.create({
     directory,
-    title: `Ship Council - ${provider.label}`
+    title: `PillowCouncil - ${provider.label}`
   });
 
   if (created.error || !created.data) {
@@ -538,7 +545,7 @@ async function promptOpenCode<T>(input: {
   }
 }
 
-export class OpenCodeCouncilProvider implements CouncilProvider {
+export class OpenCodePillowCouncilProvider implements PillowCouncilProvider {
   async generateText(input: {
     provider: string;
     model: string;
@@ -608,7 +615,7 @@ export class OpenCodeCouncilProvider implements CouncilProvider {
   }
 }
 
-export class MockCouncilProvider implements CouncilProvider {
+export class MockPillowCouncilProvider implements PillowCouncilProvider {
   async generateText(input: {
     provider: string;
     model: string;
@@ -698,7 +705,7 @@ export class MockCouncilProvider implements CouncilProvider {
         "Verify the runtime can read OpenCode credentials.",
         "Confirm decision export works after the OpenCode integration."
       ],
-      finalSummary: "Ship Council should use OpenCode for provider discovery, auth, and model execution instead of custom provider glue.",
+      finalSummary: "PillowCouncil should use OpenCode for provider discovery, auth, and model execution instead of custom provider glue.",
       todos: [
         {
           title: "Validate saved connection",
@@ -759,6 +766,6 @@ export class MockCouncilProvider implements CouncilProvider {
   }
 }
 
-export function createCouncilProvider(): CouncilProvider {
-  return new OpenCodeCouncilProvider();
+export function createPillowCouncilProvider(): PillowCouncilProvider {
+  return new OpenCodePillowCouncilProvider();
 }

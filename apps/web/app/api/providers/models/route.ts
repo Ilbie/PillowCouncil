@@ -1,4 +1,4 @@
-import { loadProviderCatalog } from "@ship-council/providers";
+import { loadProviderCatalog } from "@pillow-council/providers";
 
 export const runtime = "nodejs";
 

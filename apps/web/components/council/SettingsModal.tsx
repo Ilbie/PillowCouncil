@@ -1,9 +1,9 @@
 import { type ChangeEvent, type FC, useState } from "react";
 import { CheckCircle2, ChevronDown, Cpu, LoaderCircle, Lock, LogIn, Plus, Settings2, Sparkles, Trash2, X } from "lucide-react";
 
-import { GENERATED_PRESET_AGENT_COUNT_MIN, GENERATED_PRESET_PROMPT_MIN_LENGTH } from "@ship-council/agents";
-import type { ProviderConnectionState } from "@ship-council/providers";
-import type { AppSettings, PresetDefinition, ProviderOption, SessionLanguage } from "@ship-council/shared";
+import { GENERATED_PRESET_AGENT_COUNT_MIN, GENERATED_PRESET_PROMPT_MIN_LENGTH } from "@pillow-council/agents";
+import type { ProviderConnectionState } from "@pillow-council/providers";
+import type { AppSettings, PresetDefinition, ProviderOption, SessionLanguage } from "@pillow-council/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,7 +13,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { clampAgentCount, type ConnectionDraft } from "@/lib/council-app-helpers";
 import {
   getCloseLabel,
-  getReturnToSessionLabel
+  getReturnToSessionLabel,
+  getStructuredOutputReadyLabel
 } from "@/lib/council-app-labels";
 import type { McpSettingsDraft, PendingOauthState, SessionFormState, SettingsTab, SkillsSettingsDraft } from "@/lib/council-app-types";
 import { formatUiTimestamp, type UiLocale, getUiCopy } from "@/lib/i18n";
@@ -398,36 +399,36 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                             key={`${serverIdentity}-${index}`}
                             className="rounded-[18px] border border-gray-800 bg-[#0b0f19] p-4 text-sm text-gray-200"
                           >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <div className="font-medium text-gray-100">{server.name}</div>
-                              <div className="mt-1 text-xs text-gray-500">{server.type === "local" ? server.command?.join(" ") : server.url}</div>
-                              <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-500">
-                                <span>status: {server.status ?? "unknown"}</span>
-                                <span>resources: {server.resourceCount ?? 0}</span>
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="font-medium text-gray-100">{server.name}</div>
+                                <div className="mt-1 text-xs text-gray-500">{server.type === "local" ? server.command?.join(" ") : server.url}</div>
+                                <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-500">
+                                  <span>status: {server.status ?? "unknown"}</span>
+                                  <span>resources: {server.resourceCount ?? 0}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 rounded border-gray-600 bg-gray-900 text-blue-500"
+                                  checked={server.enabled}
+                                  onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                                    const nextServers = [...mcpSettings.servers];
+                                    nextServers[index] = { ...server, enabled: event.target.checked };
+                                    onMcpSettingsChange({ ...mcpSettings, servers: nextServers });
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  className="rounded-lg border border-gray-700 p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100"
+                                  onClick={() => onMcpSettingsChange({ ...mcpSettings, servers: mcpSettings.servers.filter((_, itemIndex) => itemIndex !== index) })}
+                                  aria-label={`${server.name} 제거`}
+                                >
+                                  <Trash2 size={14} />
+                                </button>
                               </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="checkbox"
-                                className="h-4 w-4 rounded border-gray-600 bg-gray-900 text-blue-500"
-                                checked={server.enabled}
-                                onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                                  const nextServers = [...mcpSettings.servers];
-                                  nextServers[index] = { ...server, enabled: event.target.checked };
-                                  onMcpSettingsChange({ ...mcpSettings, servers: nextServers });
-                                }}
-                              />
-                              <button
-                                type="button"
-                                className="rounded-lg border border-gray-700 p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100"
-                                onClick={() => onMcpSettingsChange({ ...mcpSettings, servers: mcpSettings.servers.filter((_, itemIndex) => itemIndex !== index) })}
-                                aria-label={`${server.name} 제거`}
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          </div>
                           </div>
                         );
                       })}
@@ -522,33 +523,33 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                             key={`${skillIdentity}-${index}`}
                             className="rounded-[18px] border border-gray-800 bg-[#0b0f19] p-4 text-sm text-gray-200"
                           >
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
-                              <div className="font-medium text-gray-100">{skill.name}</div>
-                              <div className="mt-1 text-xs text-gray-500">{skill.description}</div>
-                              <div className="mt-2 text-[11px] text-gray-600">{skill.location}</div>
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <div className="font-medium text-gray-100">{skill.name}</div>
+                                <div className="mt-1 text-xs text-gray-500">{skill.description}</div>
+                                <div className="mt-2 text-[11px] text-gray-600">{skill.location}</div>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  className="h-4 w-4 rounded border-gray-600 bg-gray-900 text-blue-500"
+                                  checked={skill.enabled}
+                                  onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                                    const nextManaged = [...skillsSettings.managed];
+                                    nextManaged[index] = { ...skill, enabled: event.target.checked };
+                                    onSkillsSettingsChange({ ...skillsSettings, managed: nextManaged });
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  className="rounded-lg border border-gray-700 p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100"
+                                  onClick={() => onSkillsSettingsChange({ ...skillsSettings, managed: skillsSettings.managed.filter((_, itemIndex) => itemIndex !== index) })}
+                                  aria-label={`${skill.name} 제거`}
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="checkbox"
-                                className="h-4 w-4 rounded border-gray-600 bg-gray-900 text-blue-500"
-                                checked={skill.enabled}
-                                onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                                  const nextManaged = [...skillsSettings.managed];
-                                  nextManaged[index] = { ...skill, enabled: event.target.checked };
-                                  onSkillsSettingsChange({ ...skillsSettings, managed: nextManaged });
-                                }}
-                              />
-                              <button
-                                type="button"
-                                className="rounded-lg border border-gray-700 p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100"
-                                onClick={() => onSkillsSettingsChange({ ...skillsSettings, managed: skillsSettings.managed.filter((_, itemIndex) => itemIndex !== index) })}
-                                aria-label={`${skill.name} 제거`}
-                              >
-                                <Trash2 size={14} />
-                              </button>
-                            </div>
-                          </div>
                           </div>
                         );
                       })}
@@ -599,22 +600,22 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                       현재 감지된 스킬 {skillsSettings.available.length}개 · 프로젝트 관리 스킬 {skillsSettings.managed.length}개
                     </div>
 
-                      <div className="space-y-2 rounded-[18px] border border-gray-800 bg-gray-950/60 p-4">
-                        <div className="text-xs font-medium uppercase tracking-wide text-gray-500">감지된 스킬 목록</div>
-                        {skillsSettings.available.map((skill, index) => {
-                          const skillIdentity = `${skill.name}-${skill.location}`;
+                    <div className="space-y-2 rounded-[18px] border border-gray-800 bg-gray-950/60 p-4">
+                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">감지된 스킬 목록</div>
+                      {skillsSettings.available.map((skill, index) => {
+                        const skillIdentity = `${skill.name}-${skill.location}`;
 
-                          return (
-                            <div
-                              key={`${skillIdentity}-${index}`}
-                              className="rounded-xl border border-gray-800 bg-[#0b0f19] px-3 py-2 text-sm text-gray-200"
-                            >
-                              <div className="font-medium text-gray-100">{skill.name}</div>
-                              <div className="text-xs text-gray-500">{skill.description}</div>
-                            </div>
-                          );
-                        })}
-                      </div>
+                        return (
+                          <div
+                            key={`${skillIdentity}-${index}`}
+                            className="rounded-xl border border-gray-800 bg-[#0b0f19] px-3 py-2 text-sm text-gray-200"
+                          >
+                            <div className="font-medium text-gray-100">{skill.name}</div>
+                            <div className="text-xs text-gray-500">{skill.description}</div>
+                          </div>
+                        );
+                      })}
+                    </div>
 
                     <div className="space-y-2 pt-1">
                       <button
@@ -659,7 +660,7 @@ export const SettingsModal: FC<SettingsModalProps> = ({
                               </Select>
                               <ChevronDown size={18} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-500" />
                             </div>
-                            <p className="text-xs text-gray-600">structured output</p>
+                            <p className="text-xs text-gray-600">{getStructuredOutputReadyLabel(uiLocale)}</p>
                           </div>
                           <div>
                             <label className="mb-2 block text-sm font-medium text-gray-400">세션 언어</label>

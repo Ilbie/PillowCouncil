@@ -15,7 +15,7 @@ const body = Noto_Sans_KR({
 });
 
 export const metadata: Metadata = {
-  title: "Ship Council",
+  title: "PillowCouncil",
   description: "Decision board for multi-agent product debates powered by OpenCode providers."
 };
 

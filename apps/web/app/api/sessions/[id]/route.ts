@@ -1,4 +1,4 @@
-import { deleteSession, getSessionDetail } from "@ship-council/shared";
+import { deleteSession, getSessionDetail } from "@pillow-council/shared";
 
 import { RouteError, withErrorHandler } from "@/app/api/_utils";
 

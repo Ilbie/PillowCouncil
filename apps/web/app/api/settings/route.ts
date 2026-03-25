@@ -1,5 +1,5 @@
-import { getProviderOption, loadProviderCatalog, parseAuthModeId } from "@ship-council/providers";
-import { appSettingsSchema, getAppSettings, saveAppSettings } from "@ship-council/shared";
+import { getProviderOption, loadProviderCatalog, parseAuthModeId } from "@pillow-council/providers";
+import { appSettingsSchema, getAppSettings, saveAppSettings } from "@pillow-council/shared";
 
 import { RouteError, withErrorHandler } from "@/app/api/_utils";
 

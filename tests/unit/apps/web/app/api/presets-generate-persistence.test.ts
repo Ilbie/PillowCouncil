@@ -9,13 +9,13 @@ class PresetGenerationError extends Error {
   }
 }
 
-vi.mock("@ship-council/agents/preset-generation-service", () => ({
+vi.mock("@pillow-council/agents/preset-generation-service", () => ({
   PresetGenerationError,
   generatePreset
 }));
 
-vi.mock("@ship-council/shared", async () => {
-  const actual = await vi.importActual<typeof import("@ship-council/shared")>("@ship-council/shared");
+vi.mock("@pillow-council/shared", async () => {
+  const actual = await vi.importActual<typeof import("@pillow-council/shared")>("@pillow-council/shared");
   return {
     ...actual,
     saveGeneratedPreset

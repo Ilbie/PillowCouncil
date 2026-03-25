@@ -327,3 +327,26 @@ export function getWaitingFeedLabel(locale: UiLocale, stage: string | null): str
       return stageLabel ? `Waiting for ${stageLabel} responses.` : "Waiting for the first response.";
   }
 }
+export function getDebateProgressLabel(locale: UiLocale): string {
+  switch (locale) {
+    case "ko": return "토론 진행 상황";
+    case "ja": return "討論進行状況";
+    default: return "Debate Progress";
+  }
+}
+
+export function getRoundLabel(locale: UiLocale): string {
+  switch (locale) {
+    case "ko": return "라운드";
+    case "ja": return "ラウンド";
+    default: return "Round";
+  }
+}
+
+export function getDetailViewLabel(locale: UiLocale): string {
+  switch (locale) {
+    case "ko": return "상세 보기";
+    case "ja": return "詳細を見る";
+    default: return "View details";
+  }
+}

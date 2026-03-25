@@ -1,7 +1,7 @@
-import type { FC } from "react";
+import { memo, type FC } from "react";
 import { Lightbulb, LoaderCircle, Trash2 } from "lucide-react";
 
-import type { SessionSummary } from "@ship-council/shared";
+import type { SessionSummary } from "@pillow-council/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -24,7 +24,7 @@ type SessionSidebarProps = {
   onDeleteSession: (sessionId: string) => void;
 };
 
-export const SessionSidebar: FC<SessionSidebarProps> = ({
+export const SessionSidebar: FC<SessionSidebarProps> = memo(function SessionSidebar({
   copy,
   uiLocale,
   sessions,
@@ -37,7 +37,7 @@ export const SessionSidebar: FC<SessionSidebarProps> = ({
   onSelectSession,
   onLoadMoreSessions,
   onDeleteSession
-}) => {
+}) {
   const hasMoreSessions = sessions.length < totalSessionCount;
 
   return (
@@ -152,6 +152,8 @@ export const SessionSidebar: FC<SessionSidebarProps> = ({
       </div>
     </aside>
   );
-};
+});
+
+SessionSidebar.displayName = "SessionSidebar";
 
 export default SessionSidebar;

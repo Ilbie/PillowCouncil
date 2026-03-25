@@ -1,5 +1,5 @@
-import type { AgentDefinition, DebateState, MemorySearchResult, MessageRecord, ModeratorSummary, PresetDefinition, SessionLanguage, SessionRecord } from "@ship-council/shared";
-import { parseRebuttalTargetHeader } from "@ship-council/shared";
+import type { AgentDefinition, DebateState, MemorySearchResult, MessageRecord, ModeratorSummary, PresetDefinition, SessionLanguage, SessionRecord } from "@pillow-council/shared";
+import { parseRebuttalTargetHeader } from "@pillow-council/shared";
 
 export function getLanguageInstruction(session: SessionRecord): string {
   const labels: Record<SessionLanguage, string> = {
@@ -344,6 +344,7 @@ export function formatResearchPlanPrompt(input: {
     `Stage: ${input.stage}`,
     `Current debate cycle: ${input.cycleNumber} of ${input.session.debateIntensity}`,
     `Agent: ${input.agent.name}`,
+    `Web search enabled: ${input.session.enableWebSearch ? "yes" : "no"}`,
     "",
     "Current debate whiteboard:",
     renderDebateState(input.debateState),
@@ -354,7 +355,9 @@ export function formatResearchPlanPrompt(input: {
     input.recentMessages.length > 0 ? `Recent discussion:\n${renderMessages(input.recentMessages)}` : "No recent discussion yet.",
     "",
     "Decide whether this turn needs research before speaking.",
-    "Choose research only if fresh evidence, policy facts, or external examples would materially improve the answer.",
+    "Choose research if fresh evidence, policy facts, market data, competitor examples, or external references would materially improve the answer.",
+    "When web search is enabled, prefer one bounded search over guessing whenever the turn depends on current facts, market reality, or external examples.",
+    "If web search is enabled and the turn could benefit from current external facts, default to one bounded search instead of skipping research.",
     "Keep research tightly bounded.",
     "Return JSON matching this shape exactly:",
     '{"shouldResearch":false,"focus":"","query":"","reason":""}',

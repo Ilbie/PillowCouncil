@@ -1,8 +1,8 @@
 import type { ChangeEvent, FC } from "react";
 import { CheckCircle2, ChevronDown, Lightbulb, X } from "lucide-react";
 
-import type { ProviderConnectionState } from "@ship-council/providers";
-import type { PresetDefinition, ProviderOption, SessionLanguage } from "@ship-council/shared";
+import type { ProviderConnectionState } from "@pillow-council/providers";
+import type { PresetDefinition, ProviderOption, SessionLanguage } from "@pillow-council/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";

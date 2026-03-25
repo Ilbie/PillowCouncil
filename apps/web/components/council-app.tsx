@@ -16,15 +16,15 @@ import {
   Sparkles,
   Users,
 } from "lucide-react";
-import type { ChangeEvent } from "react";
-import { startTransition, useEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent, MouseEvent as ReactMouseEvent } from "react";
+import { startTransition, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   GENERATED_PRESET_AGENT_COUNT_DEFAULT,
-} from "@ship-council/agents";
-import type { ProviderConnectionState } from "@ship-council/providers";
+} from "@pillow-council/agents";
+import type { ProviderConnectionState } from "@pillow-council/providers";
 
-import { getModelThinkingOptions } from "@ship-council/shared/types";
+import { getModelThinkingOptions } from "@pillow-council/shared/types";
 import type {
   AppSettings,
   LiveMessageRecord,
@@ -35,7 +35,7 @@ import type {
   SessionLanguage,
   SessionSummary,
   ThinkingIntensity
-} from "@ship-council/shared";
+} from "@pillow-council/shared";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -43,7 +43,7 @@ import { Input } from "@/components/ui/input";
 import { MarkdownContent } from "@/components/ui/markdown-content";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { CouncilHeader } from "@/components/council/CouncilHeader";
+import { PillowCouncilHeader } from "@/components/council/PillowCouncilHeader";
 import { CreateSessionModal } from "@/components/council/CreateSessionModal";
 import { DecisionSidebar } from "@/components/council/DecisionSidebar";
 import { LiveWorkspacePanel } from "@/components/council/LiveWorkspacePanel";
@@ -52,11 +52,13 @@ import { SessionSidebar } from "@/components/council/SessionSidebar";
 import {
   type UiLocale,
   UI_LOCALE_STORAGE_KEY,
+  LEGACY_UI_LOCALE_STORAGE_KEY,
   formatUiTimestamp,
   getDebateIntensityDescription,
   getDebateIntensityLabel,
   getMessageKindLabel,
   getPreferredUiLocale,
+  resolveStoredUiLocale,
   getRoundStageLabel,
   getUiCopy,
   getUiLanguageLabel,
@@ -84,6 +86,7 @@ import {
   readJson,
   reconcileConnection,
   removeLiveMessagesForSession,
+  shouldRefreshSessionListForRunSync,
   shouldRefreshSavedConnectionStateOnMount,
   shouldRefreshDraftConnectionState,
   shouldRefreshProviderCatalogOnMount,
@@ -117,7 +120,7 @@ import type {
 import { buildDebateVisualization } from "@/lib/council-visualization";
 import { cn } from "@/lib/utils";
 
-type CouncilAppProps = {
+type PillowCouncilAppProps = {
   initialPresets: PresetDefinition[];
   initialSessions: SessionSummary[];
   initialTotalSessionCount: number;
@@ -137,7 +140,7 @@ const DEBATE_INTENSITY_MAX = 20;
 const DEBATE_INTENSITY_DEFAULT = 2;
 const CUSTOM_PRESET_AGENT_COUNT_DEFAULT = GENERATED_PRESET_AGENT_COUNT_DEFAULT;
 
-export function CouncilApp({
+export function PillowCouncilApp({
   initialPresets,
   initialSessions,
   initialTotalSessionCount,
@@ -147,7 +150,7 @@ export function CouncilApp({
   defaultProvider,
   defaultModel,
   defaultAuthMode
-}: CouncilAppProps) {
+}: PillowCouncilAppProps) {
   const timelineEndRef = useRef<HTMLDivElement | null>(null);
   const oauthPopupRef = useRef<Window | null>(null);
   const loadedSessionLimitRef = useRef(Math.max(initialSessions.length, SESSION_HISTORY_PAGE_SIZE));
@@ -197,6 +200,51 @@ export function CouncilApp({
   const [generatedPreset, setGeneratedPreset] = useState<PresetDefinition | null>(null);
   const [generatedPresetSource, setGeneratedPresetSource] = useState<GeneratedPresetInputs | null>(null);
   const [shouldReturnToSession, setShouldReturnToSession] = useState(false);
+
+  // Resizable sidebar state
+  const SIDEBAR_MIN = 180;
+  const SIDEBAR_MAX = 600;
+  const [leftSidebarWidth, setLeftSidebarWidth] = useState(260);
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(380);
+  const resizingRef = useRef<{ side: "left" | "right"; startX: number; startWidth: number } | null>(null);
+
+  const startResize = useCallback((e: ReactMouseEvent<HTMLDivElement>, side: "left" | "right") => {
+    e.preventDefault();
+    resizingRef.current = {
+      side,
+      startX: e.clientX,
+      startWidth: side === "left" ? leftSidebarWidth : rightSidebarWidth
+    };
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!resizingRef.current) return;
+      const delta = ev.clientX - resizingRef.current.startX;
+      const next = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN,
+        resizingRef.current.side === "left"
+          ? resizingRef.current.startWidth + delta
+          : resizingRef.current.startWidth - delta
+      ));
+      if (resizingRef.current.side === "left") {
+        setLeftSidebarWidth(next);
+      } else {
+        setRightSidebarWidth(next);
+      }
+    };
+
+    const onMouseUp = () => {
+      resizingRef.current = null;
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+  }, [leftSidebarWidth, rightSidebarWidth]);
+
   const [connectionDraft, setConnectionDraft] = useState<ConnectionDraft>({
     providerId: initialSettings.providerId,
     authMode: initialSettings.authMode,
@@ -341,7 +389,7 @@ export function CouncilApp({
     });
   };
 
-  const refreshSessions = async (options?: { limit?: number }) => {
+  const refreshSessions = useCallback(async (options?: { limit?: number }) => {
     const limit = Math.max(options?.limit ?? loadedSessionLimitRef.current, SESSION_HISTORY_PAGE_SIZE);
     loadedSessionLimitRef.current = limit;
     const payload = await readJson<SessionHistoryListResponse>(`/api/sessions?limit=${limit}&offset=0`);
@@ -351,9 +399,9 @@ export function CouncilApp({
       setSelectedId(payload.items[0].session.id);
     }
     return payload.items;
-  };
+  }, [selectedId]);
 
-  const loadMoreSessions = async () => {
+  const loadMoreSessions = useCallback(async () => {
     setError(null);
     setIsLoadingMoreSessions(true);
 
@@ -370,9 +418,9 @@ export function CouncilApp({
     } finally {
       setIsLoadingMoreSessions(false);
     }
-  };
+  }, [copy.errorFallback, sessions.length]);
 
-  const refreshDetail = async (sessionId: string) => {
+  const refreshDetail = useCallback(async (sessionId: string) => {
     const payload = await readJson<SessionDetailResponse>(`/api/sessions/${sessionId}`);
     prunePersistedLiveMessages(payload);
     setDetail((current) => {
@@ -386,10 +434,19 @@ export function CouncilApp({
       setActiveStreamRunId(payload.run?.status === "running" ? payload.run.id : null);
     }
     return payload;
-  };
+  }, [selectedId]);
 
-  const syncSessionState = async (sessionId: string) => {
-    const [, payload] = await Promise.all([refreshSessions(), refreshDetail(sessionId)]);
+  const syncSessionState = useCallback(async (
+    sessionId: string,
+    options?: { source?: "poll" | "manual" | "stream" }
+  ) => {
+    const source = options?.source ?? "manual";
+    const payload = await refreshDetail(sessionId);
+
+    if (shouldRefreshSessionListForRunSync({ source, isRunning: payload.run?.status === "running" })) {
+      await refreshSessions();
+    }
+
     if (payload.run && payload.run.status !== "running") {
       setActiveRunSessionId((current) => (current === sessionId ? null : current));
       setActiveStreamRunId(null);
@@ -408,7 +465,7 @@ export function CouncilApp({
     }
 
     return payload;
-  };
+  }, [refreshDetail, refreshSessions]);
 
   const refreshProviderCatalog = async (options?: { force?: boolean }) => {
     setIsRefreshingModels(true);
@@ -442,7 +499,7 @@ export function CouncilApp({
       method: "POST"
     })
       .then(async (runResponse) => {
-        await syncSessionState(sessionId);
+        await syncSessionState(sessionId, { source: "manual" });
         setActiveStreamRunId(runResponse.runId);
         if (
           runResponse.run.status === "failed" &&
@@ -473,7 +530,8 @@ export function CouncilApp({
     }
 
     const storedLocale = window.localStorage.getItem(UI_LOCALE_STORAGE_KEY);
-    setUiLocale(isUiLocale(storedLocale) ? storedLocale : getPreferredUiLocale());
+    const legacyStoredLocale = window.localStorage.getItem(LEGACY_UI_LOCALE_STORAGE_KEY);
+    setUiLocale(resolveStoredUiLocale(storedLocale, legacyStoredLocale, getPreferredUiLocale()));
   }, []);
 
   useEffect(() => {
@@ -703,7 +761,7 @@ export function CouncilApp({
 
       if (payload.type === "run-complete" || payload.type === "run-error") {
         setLiveMessages((current) => filterLiveMessagesForSessionRun(current, selectedId, payload.runId));
-        void syncSessionState(selectedId).catch(() => undefined);
+        void syncSessionState(selectedId, { source: "stream" }).catch(() => undefined);
         eventSource.close();
       }
     };
@@ -720,7 +778,7 @@ export function CouncilApp({
     return () => {
       eventSource.close();
     };
-  }, [selectedId, isSelectedSessionRunning, detail?.run?.id, streamRunId]);
+  }, [selectedId, isSelectedSessionRunning, detail?.run?.id, streamRunId, syncSessionState]);
 
   useEffect(() => {
     if (!selectedId || (!isSelectedSessionRunning && detail?.run?.status !== "running")) {
@@ -730,13 +788,14 @@ export function CouncilApp({
     let active = true;
     const poll = async () => {
       try {
-        const payload = await syncSessionState(selectedId);
+        const payload = await syncSessionState(selectedId, { source: "poll" });
         if (!active) {
           return;
         }
 
         if (payload.run?.status !== "running") {
           setActiveRunSessionId((current) => (current === selectedId ? null : current));
+          await refreshSessions().catch(() => undefined);
         }
       } catch (requestError) {
         if (!active) {
@@ -756,7 +815,7 @@ export function CouncilApp({
       active = false;
       window.clearInterval(timer);
     };
-  }, [selectedId, isSelectedSessionRunning, detail?.run?.status, copy.errorFallback]);
+  }, [selectedId, isSelectedSessionRunning, detail?.run?.status, copy.errorFallback, refreshSessions, syncSessionState]);
 
   const handleSaveConnection = async () => {
     setError(null);
@@ -1070,17 +1129,17 @@ export function CouncilApp({
     setError(null);
 
     try {
-        const created = await readJson<{ sessionId: string }>("/api/sessions", {
-          method: "POST",
-          body: JSON.stringify({
-            ...form,
-            customPreset: resolveCustomPresetForSessionCreate({
-              presetId: form.presetId,
-              selectedPreset
-            }),
-            provider: savedSettings.providerId,
-            model: form.model
-          })
+      const created = await readJson<{ sessionId: string }>("/api/sessions", {
+        method: "POST",
+        body: JSON.stringify({
+          ...form,
+          customPreset: resolveCustomPresetForSessionCreate({
+            presetId: form.presetId,
+            selectedPreset
+          }),
+          provider: savedSettings.providerId,
+          model: form.model
+        })
       });
 
       setIsCreateSessionOpen(false);
@@ -1103,7 +1162,7 @@ export function CouncilApp({
     }
   };
 
-  const handleRerun = async () => {
+  const handleRerun = useCallback(async () => {
     if (!selectedId) {
       return;
     }
@@ -1118,9 +1177,9 @@ export function CouncilApp({
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, [refreshDetail, refreshSessions, selectedId]);
 
-  const handleStop = async () => {
+  const handleStop = useCallback(async () => {
     if (!selectedId || !isSelectedSessionRunning) {
       return;
     }
@@ -1134,16 +1193,20 @@ export function CouncilApp({
       });
       setActiveRunSessionId((current) => (current === selectedId ? null : current));
       setActiveStreamRunId(null);
-      await syncSessionState(selectedId).catch(() => undefined);
+      await syncSessionState(selectedId, { source: "manual" }).catch(() => undefined);
       setError(null);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : copy.errorFallback);
     } finally {
       setIsStoppingRun(false);
     }
-  };
+  }, [copy.errorFallback, isSelectedSessionRunning, selectedId, syncSessionState]);
 
-  const handleDeleteSession = async (sessionId: string) => {
+  const handleOpenCreateSession = useCallback(() => {
+    setIsCreateSessionOpen(true);
+  }, []);
+
+  const handleDeleteSession = useCallback(async (sessionId: string) => {
     const target = sessions.find((entry) => entry.session.id === sessionId);
     if (!target) {
       return;
@@ -1182,7 +1245,7 @@ ${target.session.title}`);
     } finally {
       setDeletingSessionId(null);
     }
-  };
+  }, [copy.errorFallback, copy.sessions.confirmDelete, refreshSessions, selectedId, sessions]);
 
   const activePreset = useMemo(
     () =>
@@ -1279,7 +1342,7 @@ ${target.session.title}`);
     <div className="relative flex h-screen w-full flex-col overflow-hidden bg-[#0b0f19] text-gray-100 selection:bg-blue-500/30">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(79,70,229,0.12),_transparent_48%),radial-gradient(circle_at_85%_10%,_rgba(244,104,73,0.1),_transparent_38%),linear-gradient(180deg,_rgba(255,255,255,0.03),_transparent_45%)]" />
       <div className="relative z-10 flex h-screen flex-col">
-        <CouncilHeader
+        <PillowCouncilHeader
           copy={copy}
           uiLocale={uiLocale}
           onOpenSettings={handleOpenSettings}
@@ -1293,8 +1356,12 @@ ${target.session.title}`);
           </div>
         ) : null}
 
-        <main className="grid min-h-0 flex-1 grid-cols-1 xl:grid-cols-[260px_minmax(0,_1fr)_380px]">
-          <div className="relative flex min-h-0 flex-col overflow-hidden bg-[#121826] border-r border-gray-800 shrink-0">
+        <main className="flex min-h-0 flex-1 overflow-hidden">
+          {/* Left sidebar */}
+          <div
+            className="relative flex min-h-0 flex-col overflow-hidden bg-[#121826] border-r border-gray-800 shrink-0"
+            style={{ width: leftSidebarWidth }}
+          >
             <SessionSidebar
               copy={copy}
               uiLocale={uiLocale}
@@ -1304,14 +1371,23 @@ ${target.session.title}`);
               activeRunSessionId={activeRunSessionId}
               isLoadingMore={isLoadingMoreSessions}
               deletingSessionId={deletingSessionId}
-              onOpenCreateSession={() => setIsCreateSessionOpen(true)}
+              onOpenCreateSession={handleOpenCreateSession}
               onSelectSession={setSelectedId}
               onLoadMoreSessions={loadMoreSessions}
               onDeleteSession={handleDeleteSession}
             />
           </div>
 
-          <section className="relative flex min-h-0 flex-col overflow-hidden bg-[#0b0f19]">
+          {/* Left resize handle */}
+          <div
+            onMouseDown={(e) => startResize(e, "left")}
+            className="group relative z-20 flex w-1 shrink-0 cursor-col-resize items-center justify-center bg-gray-800 hover:bg-blue-500/50 transition-colors"
+            title="드래그하여 너비 조절"
+          >
+            <div className="h-8 w-0.5 rounded-full bg-gray-600 group-hover:bg-blue-400 transition-colors" />
+          </div>
+
+          <section className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-[#0b0f19]">
             <header className="px-8 py-6 flex items-center justify-between border-b border-gray-800 shrink-0 bg-[#0b0f19]/80 backdrop-blur-md z-10">
               <div>
                 <h1 className="text-2xl font-bold text-white mb-2 flex items-center gap-3">
@@ -1386,7 +1462,20 @@ ${target.session.title}`);
             </div>
           </section>
 
-          <div className="relative flex min-h-0 flex-col overflow-hidden bg-[#121826] border-l border-gray-800 shrink-0">
+          {/* Right resize handle */}
+          <div
+            onMouseDown={(e) => startResize(e, "right")}
+            className="group relative z-20 flex w-1 shrink-0 cursor-col-resize items-center justify-center bg-gray-800 hover:bg-blue-500/50 transition-colors"
+            title="드래그하여 너비 조절"
+          >
+            <div className="h-8 w-0.5 rounded-full bg-gray-600 group-hover:bg-blue-400 transition-colors" />
+          </div>
+
+          {/* Right sidebar */}
+          <div
+            className="relative flex min-h-0 flex-col overflow-hidden bg-[#121826] border-l border-gray-800 shrink-0"
+            style={{ width: rightSidebarWidth }}
+          >
             <DecisionSidebar
               copy={copy}
               uiLocale={uiLocale}

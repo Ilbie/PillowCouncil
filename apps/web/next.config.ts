@@ -6,12 +6,13 @@ const currentDir = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1"],
+  output: "standalone",
   transpilePackages: [
-    "@ship-council/shared",
-    "@ship-council/agents",
-    "@ship-council/orchestration",
-    "@ship-council/providers",
-    "@ship-council/exports"
+    "@pillow-council/shared",
+    "@pillow-council/agents",
+    "@pillow-council/orchestration",
+    "@pillow-council/providers",
+    "@pillow-council/exports"
   ],
   outputFileTracingRoot: path.join(currentDir, "../../"),
   serverExternalPackages: ["better-sqlite3"]

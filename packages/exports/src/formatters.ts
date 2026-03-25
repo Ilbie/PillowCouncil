@@ -1,5 +1,5 @@
-import type { SessionDetailResponse } from "@ship-council/shared";
-import { parseRebuttalTargetHeader } from "@ship-council/shared/types";
+import type { SessionDetailResponse } from "@pillow-council/shared";
+import { parseRebuttalTargetHeader } from "@pillow-council/shared/types";
 
 function formatLanguage(language: string): string {
   switch (language) {

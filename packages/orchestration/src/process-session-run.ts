@@ -1,4 +1,4 @@
-import { createCouncilProvider } from "@ship-council/providers";
+import { createPillowCouncilProvider } from "@pillow-council/providers";
 import {
   appendMessageRecord,
   appendRoundRecord,
@@ -16,9 +16,9 @@ import {
   updateRunDebateState,
   updateRoundSummary,
   type SessionRunRecord
-} from "@ship-council/shared";
+} from "@pillow-council/shared";
 
-import { runCouncilSession } from "./run-session";
+import { runPillowCouncilSession } from "./run-session";
 import { publishRunStreamEvent, resetRunStream } from "./run-stream-bus";
 
 export async function processSessionRun(sessionId: string): Promise<SessionRunRecord> {
@@ -32,8 +32,8 @@ export async function processSessionRun(sessionId: string): Promise<SessionRunRe
 
   void (async () => {
     try {
-      const provider = createCouncilProvider();
-      const artifacts = await runCouncilSession({
+      const provider = createPillowCouncilProvider();
+      const artifacts = await runPillowCouncilSession({
         session,
         runId: run.id,
         provider,

@@ -1,4 +1,4 @@
-import { listSessions, resetDatabaseForTests } from "@ship-council/shared";
+import { listSessions, resetDatabaseForTests } from "@pillow-council/shared";
 
 if (process.env.NODE_ENV === "test") {
   resetDatabaseForTests();

@@ -5,14 +5,14 @@ import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { UI_LOCALE_OPTIONS, type UiLocale, getUiCopy } from "@/lib/i18n";
 
-type CouncilHeaderProps = {
+type PillowCouncilHeaderProps = {
   copy: ReturnType<typeof getUiCopy>;
   uiLocale: UiLocale;
   onOpenSettings: () => void;
   onUiLocaleChange: (locale: UiLocale) => void;
 };
 
-export const CouncilHeader: FC<CouncilHeaderProps> = ({ copy, uiLocale, onOpenSettings, onUiLocaleChange }) => {
+export const PillowCouncilHeader: FC<PillowCouncilHeaderProps> = ({ copy, uiLocale, onOpenSettings, onUiLocaleChange }) => {
   return (
     <header className="flex h-16 shrink-0 items-center justify-between border-b border-gray-800 bg-[#090d1a] px-6">
       <div className="flex items-center gap-3">
@@ -20,7 +20,7 @@ export const CouncilHeader: FC<CouncilHeaderProps> = ({ copy, uiLocale, onOpenSe
           <Lightbulb className="text-white" size={16} />
         </div>
         <div className="flex items-center gap-2">
-          <h1 className="text-lg font-bold tracking-tight text-gray-100">Ship Council</h1>
+      <h1 className="text-lg font-bold tracking-tight text-gray-100">PillowCouncil</h1>
 
         </div>
       </div>
@@ -53,4 +53,4 @@ export const CouncilHeader: FC<CouncilHeaderProps> = ({ copy, uiLocale, onOpenSe
   );
 };
 
-export default CouncilHeader;
+export default PillowCouncilHeader;

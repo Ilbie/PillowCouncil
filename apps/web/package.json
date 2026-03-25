@@ -1,5 +1,5 @@
 {
-  "name": "@ship-council/web",
+  "name": "@pillow-council/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,9 +11,9 @@
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@ship-council/agents": "0.1.0",
-    "@ship-council/exports": "0.1.0",
-    "@ship-council/shared": "0.1.0",
+    "@pillow-council/agents": "0.1.0",
+    "@pillow-council/exports": "0.1.0",
+    "@pillow-council/shared": "0.1.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^0.511.0",

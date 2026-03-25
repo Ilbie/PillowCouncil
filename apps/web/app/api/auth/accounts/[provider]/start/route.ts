@@ -1,5 +1,5 @@
-import { startProviderOauth } from "@ship-council/providers";
-import { appSettingsSchema, saveConnectionSettings } from "@ship-council/shared";
+import { startProviderOauth } from "@pillow-council/providers";
+import { appSettingsSchema, saveConnectionSettings } from "@pillow-council/shared";
 
 export const runtime = "nodejs";
 

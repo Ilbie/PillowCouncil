@@ -1,7 +1,7 @@
-import { CUSTOM_PRESET_ID_PREFIX, getPresetDefinition } from "@ship-council/agents";
-import { getProviderOption, loadProviderCatalog } from "@ship-council/providers";
-import { countSessions, createSession, listSessions, sessionCreateInputSchema } from "@ship-council/shared";
-import { getModelThinkingOptions } from "@ship-council/shared/types";
+import { CUSTOM_PRESET_ID_PREFIX, getPresetDefinition } from "@pillow-council/agents";
+import { getProviderOption, loadProviderCatalog } from "@pillow-council/providers";
+import { countSessions, createSession, listSessions, sessionCreateInputSchema } from "@pillow-council/shared";
+import { getModelThinkingOptions } from "@pillow-council/shared/types";
 
 import { RouteError, withErrorHandler } from "@/app/api/_utils";
 

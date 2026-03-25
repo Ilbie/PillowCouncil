@@ -1,5 +1,5 @@
-import { getPresetDefinition } from "@ship-council/agents";
-import type { CouncilProvider, ProviderUsage } from "@ship-council/providers";
+import { getPresetDefinition } from "@pillow-council/agents";
+import type { PillowCouncilProvider, ProviderUsage } from "@pillow-council/providers";
 import { z } from "zod";
 import {
   agentDefinitionSchema,
@@ -19,7 +19,7 @@ import {
   type PresetDefinition,
   type SessionRecord,
   type UsageSummary
-} from "@ship-council/shared";
+} from "@pillow-council/shared";
 
 import {
   formatAgentSystem,
@@ -72,7 +72,7 @@ const ALIGNMENT_INTERVENTION_THRESHOLD = 6;
 
 async function refreshDebateState(input: {
   session: SessionRecord;
-  provider: CouncilProvider;
+  provider: PillowCouncilProvider;
   state: ContextState;
   usage: UsageSummary;
   callbacks?: RunSessionCallbacks;
@@ -139,7 +139,7 @@ function buildFallbackRebuttalTarget(agentKey: string, opinionMessages: MessageR
 
 async function selectRebuttalTarget(input: {
   session: SessionRecord;
-  provider: CouncilProvider;
+  provider: PillowCouncilProvider;
   agent: AgentDefinition;
   cycleNumber: number;
   opinionMessages: MessageRecord[];
@@ -162,7 +162,7 @@ async function selectRebuttalTarget(input: {
     model: input.session.model,
     variant: input.session.thinkingIntensity,
     system: [
-      "You route one rebuttal turn for the Ship Council debate.",
+      "You route one rebuttal turn for the PillowCouncil debate.",
       "Choose exactly one target agent whose current opinion most needs constructive pressure-testing.",
       "Prioritize claims that are abstract, weakly supported, or distracted by minor implementation details instead of the core topic.",
       "Return only JSON that matches the schema.",
@@ -206,7 +206,7 @@ async function selectRebuttalTarget(input: {
 
 async function compileRuntimePreset(input: {
   session: SessionRecord;
-  provider: CouncilProvider;
+  provider: PillowCouncilProvider;
   preset: PresetDefinition;
   usage: UsageSummary;
   callbacks?: RunSessionCallbacks;
@@ -254,7 +254,7 @@ async function compileRuntimePreset(input: {
 
 async function selectNextSpeaker(input: {
   session: SessionRecord;
-  provider: CouncilProvider;
+  provider: PillowCouncilProvider;
   agents: AgentDefinition[];
   cycleNumber: number;
   stage: "opening" | "rebuttal";
@@ -273,7 +273,7 @@ async function selectNextSpeaker(input: {
     model: input.session.model,
     variant: input.session.thinkingIntensity,
     system: [
-      "You are the Ship Council moderator selecting the next speaker.",
+      "You are the PillowCouncil moderator selecting the next speaker.",
       "Choose exactly one eligible speaker or stop the stage if another turn would not materially improve the debate.",
       "Return only JSON that matches the schema.",
       getThinkingIntensityInstruction(input.session),
@@ -326,7 +326,7 @@ async function selectNextSpeaker(input: {
 
 async function planSpeakerResearch(input: {
   session: SessionRecord;
-  provider: CouncilProvider;
+  provider: PillowCouncilProvider;
   agent: AgentDefinition;
   stage: "opinion" | "rebuttal";
   cycleNumber: number;
@@ -340,6 +340,7 @@ async function planSpeakerResearch(input: {
     provider: input.session.provider,
     model: input.session.model,
     variant: input.session.thinkingIntensity,
+    enableWebSearch: input.session.enableWebSearch,
     system: [
       "You decide whether a debate turn needs a short research phase before speaking.",
       "Research only if fresh evidence or concrete examples would materially improve the answer.",
@@ -371,7 +372,7 @@ async function planSpeakerResearch(input: {
 
 async function runSpeakerResearch(input: {
   session: SessionRecord;
-  provider: CouncilProvider;
+  provider: PillowCouncilProvider;
   agent: AgentDefinition;
   stage: "opinion" | "rebuttal";
   plan: z.output<typeof researchPlanSchema>;
@@ -465,7 +466,7 @@ async function streamMessageGeneration(input: {
   session: SessionRecord;
   round: OrchestratedRound;
   runId: string;
-  provider: CouncilProvider;
+  provider: PillowCouncilProvider;
   callbacks?: RunSessionCallbacks;
   assertActive?: RunActivityGuard;
   agentKey: string;
@@ -585,10 +586,10 @@ async function streamMessageGeneration(input: {
   };
 }
 
-export async function runCouncilSession(input: {
+export async function runPillowCouncilSession(input: {
   session: SessionRecord;
   runId: string;
-  provider: CouncilProvider;
+  provider: PillowCouncilProvider;
   callbacks?: RunSessionCallbacks;
   assertActive?: RunActivityGuard;
   retrieveMemories?: (input: {
@@ -951,7 +952,7 @@ export async function runCouncilSession(input: {
     model: input.session.model,
     variant: input.session.thinkingIntensity,
     system: [
-      "You are the Ship Council moderator.",
+      "You are the PillowCouncil moderator.",
       "Summarize the strongest agreements, disagreements, and decision-relevant risks from the iterative debate.",
       "Keep the summary centered on the original topic and ignore minor technical tangents unless they materially change the decision.",
       "If no material risks remain, return an empty risks array.",
@@ -1054,7 +1055,7 @@ export async function runCouncilSession(input: {
     variant: input.session.thinkingIntensity,
     enableWebSearch: input.session.enableWebSearch,
     system: [
-      "You are finalizing the Ship Council decision.",
+      "You are finalizing the PillowCouncil decision.",
       "Return a single actionable JSON payload.",
       "Use the iterative debate history and moderator summary to make a concrete call.",
       getThinkingIntensityInstruction(input.session),

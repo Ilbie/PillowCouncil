@@ -2,9 +2,9 @@ import {
   GENERATED_PRESET_AGENT_COUNT_DEFAULT,
   GENERATED_PRESET_AGENT_COUNT_MAX,
   GENERATED_PRESET_AGENT_COUNT_MIN
-} from "@ship-council/agents";
-import type { ProviderConnectionState } from "@ship-council/providers";
-import type { LiveMessageRecord, PresetDefinition, ProviderOption, RunStreamEvent, SessionSummary, ThinkingIntensity } from "@ship-council/shared";
+} from "@pillow-council/agents";
+import type { ProviderConnectionState } from "@pillow-council/providers";
+import type { LiveMessageRecord, PresetDefinition, ProviderOption, RunStreamEvent, SessionSummary, ThinkingIntensity } from "@pillow-council/shared";
 import { getStatusLabel, type UiLocale } from "@/lib/i18n";
 import { pickPreferredAuthModeId } from "@/lib/provider-auth";
 
@@ -272,6 +272,13 @@ export function shouldRefreshSavedConnectionStateOnMount(input: {
     input.authMode !== input.currentState.authModeId ||
     !input.currentState.available
   );
+}
+
+export function shouldRefreshSessionListForRunSync(input: {
+  source: "poll" | "manual" | "stream";
+  isRunning: boolean;
+}): boolean {
+  return input.source !== "poll" || !input.isRunning;
 }
 
 export function deriveConnectionStateFromProviderOptions(

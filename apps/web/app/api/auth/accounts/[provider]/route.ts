@@ -1,4 +1,4 @@
-import { disconnectProviderAuth, getProviderConnection } from "@ship-council/providers";
+import { disconnectProviderAuth, getProviderConnection } from "@pillow-council/providers";
 
 export const runtime = "nodejs";
 
