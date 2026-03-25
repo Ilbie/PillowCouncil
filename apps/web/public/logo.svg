@@ -1,0 +1,21 @@
+<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" width="128" height="128">
+    <!-- 배경 및 테두리 (Cyber 그라데이션) -->
+    <rect x="10" y="10" width="80" height="80" rx="24" fill="#09090b" stroke="url(#grad-cyber)" stroke-width="3" />
+    
+    <!-- 4개의 위원회 노드 -->
+    <circle cx="40" cy="40" r="12" fill="none" stroke="#38bdf8" stroke-width="2" opacity="0.6" />
+    <circle cx="60" cy="40" r="12" fill="none" stroke="#7dd3fc" stroke-width="2" opacity="0.4" />
+    <circle cx="40" cy="60" r="12" fill="none" stroke="#06b6d4" stroke-width="2" opacity="0.8" />
+    <circle cx="60" cy="60" r="12" fill="none" stroke="#0284c7" stroke-width="2" opacity="0.3" />
+    
+    <!-- 중앙 코어 (합의점) -->
+    <circle cx="50" cy="50" r="5" fill="#06b6d4" />
+    
+    <!-- 그라데이션 색상 정의 -->
+    <defs>
+        <linearGradient id="grad-cyber" x1="10" y1="10" x2="90" y2="90" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#06b6d4" />
+            <stop offset="100%" stop-color="#3b82f6" />
+        </linearGradient>
+    </defs>
+</svg>

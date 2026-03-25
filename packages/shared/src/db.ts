@@ -1,16 +1,56 @@
 import fs from "node:fs";
-import Database from "better-sqlite3";
+import { createRequire } from "node:module";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 
 import { databasePath, ensureParentDirectory } from "./utils";
 import * as schema from "./schema";
 
-let connection: Database.Database | null = null;
+let connection: SqliteDatabase | null = null;
+const require = createRequire(import.meta.url);
 
-function createConnection(): Database.Database {
+type BetterSqlite3Constructor = typeof import("better-sqlite3");
+type SqliteDatabase = import("better-sqlite3").Database;
+
+function createBetterSqliteLoadError(error: unknown): Error {
+  if (!(error instanceof Error)) {
+    return new Error("Failed to load better-sqlite3.");
+  }
+
+  const isNativeMismatch =
+    error.message.includes("invalid ELF header") ||
+    error.message.includes("not a valid Win32 application");
+
+  if (!isNativeMismatch) {
+    return error;
+  }
+
+  return new Error(
+    [
+      "better-sqlite3 native bindings do not match the current runtime.",
+      "This usually happens when the same node_modules folder is used from both Windows and WSL/Linux.",
+      "Windows and WSL/Linux cannot safely share the same built better-sqlite3 binary.",
+      "Run `npm run native:rebuild` in the same shell/runtime that you are using to start PillowCouncil right now.",
+      `Original error: ${error.message}`
+    ].join(" "),
+    { cause: error }
+  );
+}
+
+export const createBetterSqliteLoadErrorForTests = createBetterSqliteLoadError;
+
+function loadBetterSqlite3(): BetterSqlite3Constructor {
+  try {
+    return require("better-sqlite3") as BetterSqlite3Constructor;
+  } catch (error) {
+    throw createBetterSqliteLoadError(error);
+  }
+}
+
+function createConnection(): SqliteDatabase {
   const filePath = databasePath();
   ensureParentDirectory(filePath);
-  const db = new Database(filePath);
+  const BetterSqlite3 = loadBetterSqlite3();
+  const db = new BetterSqlite3(filePath);
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.pragma("busy_timeout = 5000");
@@ -338,7 +378,7 @@ function createConnection(): Database.Database {
   return db;
 }
 
-export function getSQLite(): Database.Database {
+export function getSQLite(): SqliteDatabase {
   if (!connection) {
     connection = createConnection();
   }

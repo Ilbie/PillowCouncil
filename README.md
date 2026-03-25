@@ -1,65 +1,171 @@
 # PillowCouncil
 
-PillowCouncil is a local/self-hosted MVP that runs a 4-round council discussion, then saves the final decision and TODO list.
+<p align="center">
+  <img src="./docs/assets/pillowcouncil-banner.svg" alt="PillowCouncil banner" width="100%" />
+</p>
 
-The provider layer now follows OpenCode directly:
+<p align="center"><strong>Your personal board of AI directors.</strong></p>
 
-- provider/model catalog from OpenCode
-- login methods from OpenCode
-- model execution through the OpenCode SDK/server
-- no custom provider/account auth adapters in this app
+<p align="center">
+  PillowCouncil is a local, self-hosted multi-agent debate workspace for pressure-testing ideas,
+  reviewing product and engineering decisions, and turning messy discussions into a concrete final recommendation.
+</p>
 
-## Workspace
+<p align="center">
+  <a href="./docs/ko/README.md">한국어</a>
+  ·
+  <a href="./README.md">English</a>
+  ·
+  <a href="./docs/ja/README.md">日本語</a>
+</p>
 
-- `apps/web`: Next.js App Router UI + API
-- `packages/shared`: SQLite/Drizzle schema, repository, shared types
-- `packages/agents`: panel presets and agent definitions
-- `packages/orchestration`: 4-round council flow
-- `packages/providers`: OpenCode catalog/auth/runtime bridge
-- `packages/exports`: Markdown/JSON export
+<p align="center">
+  <a href="#quick-start">Quick Start</a>
+  ·
+  <a href="./docs/README.md">Docs</a>
+  ·
+  <a href="#monorepo-layout">Architecture</a>
+</p>
 
-## How It Works
+## Why teams reach for PillowCouncil
 
-1. The web app starts an OpenCode server through the SDK.
-2. It loads providers, login methods, connected state, and models from OpenCode.
-3. In the UI you save a reusable connection:
-   - provider
-   - login method
-   - model
-4. If the selected login method is API key based, `Save Connection` writes the key into the OpenCode auth store.
-5. If the selected login method is browser based, `Open Login` starts the OpenCode browser flow.
-6. New sessions reuse the saved connection and only ask for title, topic, panel, and debate intensity.
-7. The `run` API executes the discussion immediately and stores results in SQLite.
+| What you get | Why it matters |
+| --- | --- |
+| Local, self-hosted workflow | Keep decision history, presets, and app data on your machine. |
+| Structured debate stages | Move from opening opinions to rebuttals, a moderator summary, and a final recommendation. |
+| OpenCode-managed credentials | Reuse provider auth without building a custom secret storage layer in the app. |
+| Action-oriented outputs | Finish with explicit risks, alternatives, and next actions instead of vague AI summaries. |
 
-## Quick Start
+## Why PillowCouncil?
 
-1. Run `npm install`
-2. Run `npm run dev`
-3. Open `http://127.0.0.1:3000`
-4. In the web UI choose provider, login method, and model
-5. Save the connection or complete browser login
-6. Create a session
+Most AI chats end with a decent answer but weak decision pressure. PillowCouncil creates a structured panel instead:
 
-## Connection Model
+- multiple agents argue from different perspectives
+- rebuttals force weak claims to surface early
+- the moderator distills trade-offs into a final recommendation
+- every run ends with risks, alternatives, and next actions you can actually execute
 
-The connection form is separate from the session form.
+## What it does
 
-- login methods are derived from OpenCode provider metadata
-- API keys are stored in OpenCode, not in PillowCouncil's SQLite DB
-- browser login is started by OpenCode and the resulting credential is reused by PillowCouncil
-- PillowCouncil stores the selected provider, login method, and model in SQLite
-- PillowCouncil reuses the standard OpenCode credential store, so browser logins and saved API keys stay in the same place OpenCode already uses
+- **Structured multi-agent debates** with opinion, rebuttal, moderator summary, and final recommendation stages
+- **Reusable OpenCode-powered connections** for provider, login method, and model selection
+- **Local-first persistence** backed by SQLite for sessions, presets, and settings
+- **Korean, English, and Japanese support** for both UI and generated debate output
+- **Preset-based and AI-generated panels** so you can start from built-in councils like SaaS Founder, Product Scope, and Architecture Review or generate a custom one
+- **Markdown and JSON exports** for sharing outcomes outside the app
+- **Live session workflow** that updates the debate timeline as runs progress
+- **Optional CLI packaging path** via the `pillow-council` binary in this repository
 
-## Configuration
+## How it works
 
-- no project `.env` file is required
-- the app database lives at `data/pillow-council.db`
-- provider, login method, and model are changed in the web settings UI
-- provider API keys can be entered in the web settings UI instead of a local `.env`
+PillowCouncil separates connection setup from session execution:
 
-## Testing
+1. Choose a provider, login method, and model through the web UI.
+2. Save the connection through OpenCode's credential flow.
+3. Create a new session with a topic, panel preset, language, and debate intensity.
+4. Run the council and follow the timeline as messages and rounds are stored.
+5. Review the final recommendation, risks, alternatives, and TODO list.
+6. Export the result as Markdown or JSON when needed.
 
-- `npm run typecheck`
-- `npm test`
-- `npm run build`
-- `npm run test:e2e`
+## Quick start
+
+### Run from source
+
+```bash
+npm install
+npm run dev
+```
+
+Open `http://127.0.0.1:3000` and configure your provider connection in the UI.
+
+### Native SQLite note for Windows + WSL
+
+`better-sqlite3` is a native module, so one `node_modules` folder cannot safely serve both Windows Node.js and WSL/Linux Node.js at the same time.
+
+- If you run PillowCouncil from **PowerShell / Command Prompt**, rebuild native modules there.
+- If you run PillowCouncil from **WSL Ubuntu**, rebuild native modules inside WSL.
+
+When you switch runtimes, run:
+
+```bash
+npm run native:rebuild
+```
+
+If you see errors like `not a valid Win32 application` or `invalid ELF header`, the current shell is loading a binary built for the other runtime.
+
+### Run through the packaged CLI
+
+This repository already exposes a `pillow-council` CLI entrypoint for standalone builds.
+
+```bash
+npm install
+npm run build
+npx pillow-council
+```
+
+If you publish the package, the same entrypoint can be used through `npx pillow-council` or `npm install -g pillow-council`.
+
+## Connection model
+
+- No local project `.env` file is required for provider credentials.
+- API keys are stored in the OpenCode credential store, not in PillowCouncil's SQLite tables.
+- Browser-based login flows are started by OpenCode and reused by PillowCouncil.
+- PillowCouncil stores the selected provider, login method, and model as reusable app settings.
+- App data is stored locally under `~/.pillow-council/`, including the default SQLite database at `~/.pillow-council/data/pillow-council.db`.
+
+## Monorepo layout
+
+```text
+apps/web                 Next.js 15 App Router UI and API surface
+packages/shared          SQLite access, schema, repository, shared types
+packages/agents          Built-in presets and custom preset generation
+packages/providers       OpenCode catalog, auth, and runtime bridge
+packages/orchestration   Debate engine and session execution pipeline
+packages/exports         Markdown and JSON export helpers
+scripts/                 Database reset, inspection, and standalone prep
+tests/                   Vitest and Playwright coverage
+```
+
+## Developer commands
+
+```bash
+# Start the web app
+npm run dev
+
+# Run the standalone-ready production build
+npm run build
+
+# Type-check all workspaces
+npm run typecheck
+
+# Run unit and integration tests
+npm test
+
+# Run Playwright end-to-end tests
+npm run test:e2e
+
+# Inspect the local SQLite database
+npm run db:inspect
+
+# Rebuild native sqlite bindings for the current shell/runtime
+npm run native:rebuild
+```
+
+## Documentation
+
+- [Documentation hub](./docs/README.md)
+- [English overview](./docs/en/README.md)
+- [한국어 문서](./docs/ko/README.md)
+- [日本語ドキュメント](./docs/ja/README.md)
+
+## Tech stack
+
+- Next.js 15 + React 19
+- TypeScript monorepo
+- SQLite with shared repository/schema package
+- OpenCode SDK and runtime integration
+- Vitest + Playwright for verification
+
+## License
+
+Released under the [MIT License](./LICENSE).

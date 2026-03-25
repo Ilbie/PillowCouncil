@@ -1,6 +1,8 @@
+import Image from "next/image";
 import type { ChangeEvent, FC } from "react";
-import { ChevronDown, Lightbulb, Settings } from "lucide-react";
+import { ChevronDown, Settings } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { UI_LOCALE_OPTIONS, type UiLocale, getUiCopy } from "@/lib/i18n";
@@ -14,14 +16,17 @@ type PillowCouncilHeaderProps = {
 
 export const PillowCouncilHeader: FC<PillowCouncilHeaderProps> = ({ copy, uiLocale, onOpenSettings, onUiLocaleChange }) => {
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b border-gray-800 bg-[#090d1a] px-6">
+    <header className="flex h-20 shrink-0 items-center justify-between border-b border-cyan-500/15 bg-[#060b16]/95 px-6 backdrop-blur-sm">
       <div className="flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-600 shadow-[0_4px_10px_rgba(37,99,235,0.35)]">
-          <Lightbulb className="text-white" size={16} />
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-cyan-400/25 bg-[#050913] shadow-[0_10px_25px_rgba(8,145,178,0.18)]">
+          <Image src="/logo.svg" alt="PillowCouncil logo" width={32} height={32} priority className="h-8 w-8" />
         </div>
-        <div className="flex items-center gap-2">
-      <h1 className="text-lg font-bold tracking-tight text-gray-100">PillowCouncil</h1>
-
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-bold tracking-tight text-gray-100">PillowCouncil</h1>
+            <Badge className="border-cyan-400/20 bg-cyan-500/10 text-cyan-100">{copy.appBadge}</Badge>
+          </div>
+          <p className="text-xs text-cyan-50/70">{copy.headerTitle}</p>
         </div>
       </div>
 

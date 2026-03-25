@@ -14,9 +14,31 @@ const body = Noto_Sans_KR({
   weight: ["400", "500", "700"]
 });
 
+const metadataBase = new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000");
+
 export const metadata: Metadata = {
+  metadataBase,
   title: "PillowCouncil",
-  description: "Decision board for multi-agent product debates powered by OpenCode providers."
+  description: "Decision board for multi-agent product debates powered by OpenCode providers.",
+  icons: {
+    icon: [
+      { url: "/logo.svg", type: "image/svg+xml" },
+      { url: "/logo.ico", sizes: "any" }
+    ],
+    shortcut: [{ url: "/logo.ico" }],
+    apple: [{ url: "/logo.png" }]
+  },
+  openGraph: {
+    title: "PillowCouncil",
+    description: "Decision board for multi-agent product debates powered by OpenCode providers.",
+    images: [{ url: "/logo.png" }]
+  },
+  twitter: {
+    card: "summary",
+    title: "PillowCouncil",
+    description: "Decision board for multi-agent product debates powered by OpenCode providers.",
+    images: ["/logo.png"]
+  }
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

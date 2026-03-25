@@ -6,10 +6,12 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const http = require("node:http");
 const open = require("open");
+const { handleStartupFailure, resolveHost } = require("./cli-helpers.cjs");
 
-const HOST = process.env.HOSTNAME || "127.0.0.1";
+const HOST = resolveHost(process.env);
 const DEFAULT_PORT = Number.parseInt(process.env.PORT || "3000", 10);
 const SERVER_READY_TIMEOUT_MS = 20_000;
+const shouldOpenBrowser = !process.argv.includes("--no-open");
 
 function candidateServerPaths() {
   const packageRoot = path.resolve(__dirname, "..");
@@ -119,9 +121,23 @@ async function main() {
     process.exit(code ?? 0);
   });
 
-  await waitForServer(url);
-  console.log(`PillowCouncil is running at ${url}`);
-  await open(url);
+  try {
+    await waitForServer(url);
+    console.log(`PillowCouncil is running at ${url}`);
+
+    if (shouldOpenBrowser) {
+      try {
+        await open(url);
+      } catch (error) {
+        console.warn(`Failed to open a browser automatically. Open ${url} manually.`);
+        if (error instanceof Error && error.message) {
+          console.warn(error.message);
+        }
+      }
+    }
+  } catch (error) {
+    handleStartupFailure(child, error instanceof Error ? error : new Error(String(error)));
+  }
 }
 
 main().catch((error) => {

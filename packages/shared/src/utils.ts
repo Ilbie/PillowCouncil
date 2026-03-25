@@ -62,11 +62,38 @@ function migrateLegacyDatabasePath(targetPath: string): void {
       continue;
     }
 
-    ensureParentDirectory(targetPath);
-    fs.renameSync(legacyPath, targetPath);
+    migrateDatabaseFamily(legacyPath, targetPath);
     return;
   }
 }
+
+function migrateDatabaseFamily(sourcePath: string, targetPath: string): void {
+  const suffixes = ["", "-shm", "-wal"];
+
+  for (const suffix of suffixes) {
+    const source = `${sourcePath}${suffix}`;
+    const target = `${targetPath}${suffix}`;
+
+    if (!fs.existsSync(source) || fs.existsSync(target)) {
+      continue;
+    }
+
+    ensureParentDirectory(target);
+
+    try {
+      fs.renameSync(source, target);
+    } catch (error) {
+      if (!(error instanceof Error) || !("code" in error) || error.code !== "EXDEV") {
+        throw error;
+      }
+
+      fs.copyFileSync(source, target);
+      fs.unlinkSync(source);
+    }
+  }
+}
+
+export const migrateDatabaseFamilyForTests = migrateDatabaseFamily;
 
 export function setDatabasePathForTests(filePath: string | null): void {
   testDatabasePathOverride = filePath;

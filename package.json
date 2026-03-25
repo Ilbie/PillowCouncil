@@ -21,7 +21,8 @@
     "dev": "npm run dev --workspace @pillow-council/web",
     "dev:e2e": "tsx scripts/reset-db.ts && npm run dev:e2e --workspace @pillow-council/web",
     "dev:web": "npm run dev --workspace @pillow-council/web",
-    "build": "npm run build --workspace @pillow-council/web && npm run typecheck",
+    "build": "npm run build --workspace @pillow-council/web && node scripts/prepare-standalone.mjs && npm run typecheck",
+    "native:rebuild": "npm rebuild better-sqlite3",
     "typecheck": "npm run typecheck --workspace @pillow-council/shared && npm run typecheck --workspace @pillow-council/agents && npm run typecheck --workspace @pillow-council/providers && npm run typecheck --workspace @pillow-council/orchestration && npm run typecheck --workspace @pillow-council/exports && npm run typecheck --workspace @pillow-council/web",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -43,6 +44,7 @@
   },
   "dependencies": {
     "@opencode-ai/sdk": "^1.2.27",
+    "better-sqlite3": "^11.9.1",
     "open": "^10.1.2",
     "opencode-ai": "^1.2.27",
     "zod-to-json-schema": "^3.25.1"

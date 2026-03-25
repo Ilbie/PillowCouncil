@@ -25,7 +25,14 @@ type CachedOpencodeHandle = {
 let cachedHandle: CachedOpencodeHandle | null = null;
 let factory: (() => Promise<OpencodeHandle>) | null = null;
 let handleMutationLock: Promise<void> = Promise.resolve();
-const resolveFromModule = createRequire(import.meta.url).resolve;
+
+function getPackageJsonResolver(): (request: string) => string {
+  const entryFile = process.argv[1] && path.isAbsolute(process.argv[1])
+    ? process.argv[1]
+    : path.join(process.cwd(), "package.json");
+
+  return createRequire(entryFile).resolve;
+}
 
 function getDefaultDataHomeRoot(env: NodeJS.ProcessEnv = process.env): string {
   const userHome = env.USERPROFILE?.trim() || env.HOME?.trim() || os.homedir();
@@ -93,7 +100,7 @@ function ensureDirectory(dirPath: string): void {
 }
 
 export function resolveOpencodeLauncherPathForTests(
-  resolvePackageJson: (request: string) => string = resolveFromModule,
+  resolvePackageJson: (request: string) => string = getPackageJsonResolver(),
   pathExists: (filePath: string) => boolean = existsSync
 ): string {
   const packageJsonPath = resolvePackageJson("opencode-ai/package.json");
