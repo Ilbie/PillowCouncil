@@ -367,15 +367,8 @@ export function getLocalizedInterventionMessage(input: {
   warning: string;
   topic: string;
 }): string {
-  if (input.language === "en") {
-    return `[System] Warning: ${input.warning} Return immediately to the original topic, "${input.topic}".`;
-  }
-
-  if (input.language === "ja") {
-    return `[System] 警告: ${input.warning} 元のテーマ「${input.topic}」の議論に直ちに戻ってください。`;
-  }
-
-  return `[System] 경고: ${input.warning} 원래 주제인 '${input.topic}' 논의로 즉시 돌아오십시오.`;
+  void input.language;
+  return `[System] Warning: ${input.warning} Return immediately to the original topic, "${input.topic}".`;
 }
 
 export function formatFinalPrompt(input: {
