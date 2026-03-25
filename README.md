@@ -1,7 +1,7 @@
 # PillowCouncil
 
 <p align="center">
-  <img src="./docs/assets/pillowcouncil-banner.svg" alt="PillowCouncil banner" width="100%" />
+  <img src="./asset/logo.svg" alt="PillowCouncil logo" width="180" />
 </p>
 
 <p align="center"><strong>Your personal board of AI directors.</strong></p>
