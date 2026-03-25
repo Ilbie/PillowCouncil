@@ -1,5 +1,5 @@
 import type { LiveMessageRecord, MessageRecord, PanelPreset, RunStage, SessionDetailResponse } from "@ship-council/shared";
-import { parseRebuttalTargetHeader } from "@ship-council/shared/types";
+import { getExpectedStageSpeakerCount, parseRebuttalTargetHeader } from "@ship-council/shared/types";
 
 export type VisualizationStageStatus = "pending" | "active" | "completed";
 export type VisualizationAgentStatus = "queued" | "active" | "done";
@@ -105,11 +105,8 @@ function getExpectedRounds(detail: SessionDetailResponse): Record<RunStage, numb
 }
 
 function getExpectedSpeakerCount(stage: RunStage, agentCount: number): number {
-  if (stage === "summary" || stage === "final") {
-    return 1;
-  }
-
-  return agentCount;
+  void agentCount;
+  return getExpectedStageSpeakerCount(stage);
 }
 
 function getActiveStage(detail: SessionDetailResponse, isRunning: boolean, agentCount: number): RunStage | null {
@@ -270,7 +267,7 @@ export function buildDebateVisualization(input: {
   });
 
   const activeRoundResponders = new Set((activeTimelineRound?.messages ?? []).map((message) => message.agentKey));
-  const nextActiveAgentKey = panelAgents.find((agent) => !activeRoundResponders.has(agent.key))?.key ?? null;
+  const nextActiveAgentKey = activeTimelineRound?.messages.length ? activeTimelineRound.messages[activeTimelineRound.messages.length - 1]?.agentKey ?? null : null;
   const contributionsByAgent = new Map<string, number>();
   for (const round of input.detail.rounds) {
     for (const message of round.messages) {
@@ -291,8 +288,8 @@ export function buildDebateVisualization(input: {
       status: agentStatusesAllowActive
         ? activeRoundResponders.has(agent.key)
           ? "done"
-          : input.isRunning && nextActiveAgentKey === agent.key
-            ? "active"
+            : input.isRunning && nextActiveAgentKey === agent.key
+              ? "active"
             : input.isRunning && activeStage !== null
               ? "queued"
               : contributionCount > 0

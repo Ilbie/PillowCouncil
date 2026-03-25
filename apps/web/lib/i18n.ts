@@ -146,7 +146,8 @@ const COPY = {
       opinion: "의견",
       rebuttal: "반박",
       summary: "요약",
-      final: "최종"
+      final: "최종",
+      intervention: "개입"
     },
     todoPriorities: {
       high: "높음",
@@ -295,7 +296,8 @@ const COPY = {
       opinion: "Opinion",
       rebuttal: "Rebuttal",
       summary: "Summary",
-      final: "Final"
+      final: "Final",
+      intervention: "Intervention"
     },
     todoPriorities: {
       high: "High",
@@ -444,7 +446,8 @@ const COPY = {
       opinion: "意見",
       rebuttal: "反論",
       summary: "要約",
-      final: "最終"
+      final: "最終",
+      intervention: "介入"
     },
     todoPriorities: {
       high: "高",

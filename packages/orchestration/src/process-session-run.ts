@@ -11,6 +11,7 @@ import {
   RUN_STOPPED_BY_USER_MESSAGE,
   searchRunMessageMemories,
   saveDecisionArtifacts,
+  saveSessionRuntimePreset,
   startSessionRun,
   updateRunDebateState,
   updateRoundSummary,
@@ -51,6 +52,9 @@ export async function processSessionRun(sessionId: string): Promise<SessionRunRe
           },
           onDebateStateUpdated(state) {
             updateRunDebateState(run.id, state);
+          },
+          onRuntimePresetCompiled(preset) {
+            saveSessionRuntimePreset(session.id, preset);
           },
           onUsage(usage) {
             accumulateRunUsage(run.id, usage);

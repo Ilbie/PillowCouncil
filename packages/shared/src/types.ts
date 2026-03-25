@@ -142,7 +142,9 @@ export type TodoItemInput = z.output<typeof todoItemSchema>;
 export const debateStateSchema = z.object({
   agreedPoints: z.array(z.string().min(1)).max(8),
   activeConflicts: z.array(z.string().min(1)).max(8),
-  pendingQuestions: z.array(z.string().min(1)).max(8)
+  pendingQuestions: z.array(z.string().min(1)).max(8),
+  alignmentScore: z.number().int().min(1).max(10).default(10),
+  deviationWarning: z.string().min(1).max(400).nullable().default(null)
 });
 
 export type DebateState = z.output<typeof debateStateSchema>;
@@ -151,15 +153,25 @@ export function createEmptyDebateState(): DebateState {
   return {
     agreedPoints: [],
     activeConflicts: [],
-    pendingQuestions: []
+    pendingQuestions: [],
+    alignmentScore: 10,
+    deviationWarning: null
   };
+}
+
+export function getExpectedStageSpeakerCount(stage: RunStage): number {
+  if (stage === "summary" || stage === "final") {
+    return 1;
+  }
+
+  return 1;
 }
 
 export const moderatorSummarySchema = z.object({
   keyPoints: z.array(z.string().min(1)).min(2).max(5),
   agreements: z.array(z.string().min(1)).min(1).max(5),
   disagreements: z.array(z.string().min(1)).min(1).max(5),
-  risks: z.array(z.string().min(1)).min(1).max(5),
+  risks: z.array(z.string().min(1)).max(5),
   summary: z.string().min(1).max(1200)
 });
 
@@ -168,7 +180,7 @@ export type ModeratorSummary = z.output<typeof moderatorSummarySchema>;
 export const decisionSummarySchema = z.object({
   topRecommendation: z.string().min(1).max(1000),
   alternatives: z.array(z.string().min(1)).min(1).max(4),
-  risks: z.array(z.string().min(1)).min(1).max(6),
+  risks: z.array(z.string().min(1)).max(6),
   assumptions: z.array(z.string().min(1)).min(1).max(6),
   openQuestions: z.array(z.string().min(1)).min(1).max(6),
   nextActions: z.array(z.string().min(1)).min(1).max(6),
@@ -316,7 +328,7 @@ export type MessageRecord = {
   agentKey: string;
   agentName: string;
   role: "agent" | "moderator" | "system";
-  kind: "opinion" | "rebuttal" | "summary" | "final";
+  kind: "opinion" | "rebuttal" | "summary" | "final" | "intervention";
   targetAgentKey?: string | null;
   content: string;
   createdAt: string;

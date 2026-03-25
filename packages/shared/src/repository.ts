@@ -346,6 +346,23 @@ export function saveGeneratedPreset(input: PresetDefinition): PresetDefinition {
   return input;
 }
 
+export function saveSessionRuntimePreset(sessionId: string, preset: PresetDefinition): PresetDefinition {
+  const db = getDb();
+  const now = nowIso();
+
+  db.update(sessions)
+    .set({
+      presetName: preset.name,
+      presetDescription: preset.description,
+      presetAgents: serializeCustomPresetAgents(preset.agents),
+      updatedAt: now
+    })
+    .where(eq(sessions.id, sessionId))
+    .run();
+
+  return preset;
+}
+
 export function listSavedPresets(): PresetDefinition[] {
   const db = getDb();
   return db.select().from(savedPresets).orderBy(desc(savedPresets.updatedAt)).all()

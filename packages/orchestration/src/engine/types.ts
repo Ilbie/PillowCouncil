@@ -3,6 +3,7 @@ import type {
   DebateState,
   DecisionSummary,
   MessageRecord,
+  PresetDefinition,
   RoundRecord,
   RunStreamEvent,
   UsageSummary
@@ -23,6 +24,7 @@ export type RunSessionCallbacks = {
   onRoundSummary?: (roundId: string, summary: string | null) => Promise<void> | void;
   onMessageCreated?: (message: MessageRecord, usage: ProviderUsage) => Promise<void> | void;
   onDebateStateUpdated?: (state: DebateState) => Promise<void> | void;
+  onRuntimePresetCompiled?: (preset: PresetDefinition) => Promise<void> | void;
   onUsage?: (usage: ProviderUsage) => Promise<void> | void;
   onStreamEvent?: (event: RunStreamEvent) => Promise<void> | void;
 };
