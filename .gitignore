@@ -12,3 +12,5 @@ data/*.db-shm
 data/*.db-wal
 !.env.example
 !.gitkeep
+AGENTS.md
+agent.md
