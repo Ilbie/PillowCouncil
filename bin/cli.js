@@ -124,24 +124,33 @@ async function downloadAndExtract(assetUrl) {
   try { fs.unlinkSync(tarPath); } catch { /* ignore */ }
 }
 
-// ── Install native dependencies (better-sqlite3) ────────────────────────
-async function installNativeDeps() {
-  const marker = path.join(CACHE_DIR, ".native-deps-installed");
+// ── Install runtime dependencies not bundled in standalone ───────────────
+const RUNTIME_DEPS = ["better-sqlite3", "opencode-ai", "@opencode-ai/sdk"];
+
+async function installRuntimeDeps() {
+  const marker = path.join(CACHE_DIR, ".runtime-deps-installed");
   if (fs.existsSync(marker)) return;
 
-  console.log("Installing native dependencies...");
+  console.log("Installing runtime dependencies...");
 
   // Install in a clean temp directory to avoid workspace package.json issues
-  const tmpInstallDir = path.join(os.tmpdir(), `pillow-council-native-${Date.now()}`);
+  const tmpInstallDir = path.join(os.tmpdir(), `pillow-council-deps-${Date.now()}`);
   fs.mkdirSync(tmpInstallDir, { recursive: true });
   fs.writeFileSync(path.join(tmpInstallDir, "package.json"), '{"private":true}', "utf-8");
 
-  await runNpmCommand(["install", "better-sqlite3"], tmpInstallDir);
+  await runNpmCommand(["install", ...RUNTIME_DEPS], tmpInstallDir);
 
-  // Copy better-sqlite3 into the standalone node_modules
-  const src = path.join(tmpInstallDir, "node_modules", "better-sqlite3");
-  const dest = path.join(CACHE_DIR, "node_modules", "better-sqlite3");
-  fs.cpSync(src, dest, { recursive: true, force: true });
+  // Copy each dependency into the standalone node_modules
+  const standaloneModules = path.join(CACHE_DIR, "node_modules");
+  const tmpModules = path.join(tmpInstallDir, "node_modules");
+
+  for (const dep of fs.readdirSync(tmpModules)) {
+    const src = path.join(tmpModules, dep);
+    const dest = path.join(standaloneModules, dep);
+    if (!fs.existsSync(dest)) {
+      fs.cpSync(src, dest, { recursive: true, force: true });
+    }
+  }
 
   // Clean up temp directory
   try { fs.rmSync(tmpInstallDir, { recursive: true, force: true }); } catch { /* ignore */ }
@@ -169,7 +178,7 @@ async function ensureStandaloneServerPath() {
     }
   }
 
-  await installNativeDeps();
+  await installRuntimeDeps();
   console.log("Ready.");
 
   return serverPath;
