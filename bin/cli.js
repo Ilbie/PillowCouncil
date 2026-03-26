@@ -22,11 +22,40 @@ function candidateServerPaths() {
 }
 
 function resolveStandaloneServerPath() {
-  const serverPath = candidateServerPaths().find((candidate) => fs.existsSync(candidate));
+  return candidateServerPaths().find((candidate) => fs.existsSync(candidate)) ?? null;
+}
+
+function runBuild(packageRoot) {
+  return new Promise((resolve, reject) => {
+    console.log("⚙️  PillowCouncil standalone server not found. Running build (this may take a few minutes)...");
+    const build = spawn(
+      process.platform === "win32" ? "npm.cmd" : "npm",
+      ["run", "build"],
+      { cwd: packageRoot, stdio: "inherit" }
+    );
+    build.once("exit", (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`Build failed with exit code ${code}.`));
+      }
+    });
+    build.once("error", reject);
+  });
+}
+
+async function ensureStandaloneServerPath() {
+  const packageRoot = path.resolve(__dirname, "..");
+  let serverPath = resolveStandaloneServerPath();
+
+  if (!serverPath) {
+    await runBuild(packageRoot);
+    serverPath = resolveStandaloneServerPath();
+  }
 
   if (!serverPath) {
     throw new Error(
-      "PillowCouncil standalone server was not found. Run `npm run build` before publishing or invoking the CLI."
+      "PillowCouncil standalone server was not found even after build. Please check your build output."
     );
   }
 
@@ -92,7 +121,7 @@ function waitForServer(url) {
 }
 
 async function main() {
-  const serverPath = resolveStandaloneServerPath();
+  const serverPath = await ensureStandaloneServerPath();
   const port = await findAvailablePort(DEFAULT_PORT);
   const url = `http://${HOST}:${port}`;
   const packageRoot = path.resolve(__dirname, "..");

@@ -3,7 +3,7 @@
   "version": "0.1.2",
   "private": false,
   "description": "CLI for running PillowCouncil's multi-agent decision board locally.",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "homepage": "https://github.com/Ilbie/PillowCouncil#readme",
   "repository": {
     "type": "git",
