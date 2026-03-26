@@ -187,4 +187,4 @@ npm run native:rebuild
 
 ## License
 
-Released under the [MIT License](./LICENSE).
+Released under the [License](./LICENSE).
