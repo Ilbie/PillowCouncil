@@ -4,13 +4,13 @@
   "private": false,
   "description": "CLI for running PillowCouncil's multi-agent decision board locally.",
   "license": "MIT",
-  "homepage": "https://github.com/ilbie/PillowCouncil#readme",
+  "homepage": "https://github.com/Ilbie/PillowCouncil#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ilbie/PillowCouncil.git"
+    "url": "git+https://github.com/Ilbie/PillowCouncil.git"
   },
   "bugs": {
-    "url": "https://github.com/ilbie/PillowCouncil/issues"
+    "url": "https://github.com/Ilbie/PillowCouncil/issues"
   },
   "keywords": [
     "cli",
