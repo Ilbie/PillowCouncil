@@ -1,6 +1,6 @@
 {
   "name": "pillow-council",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": false,
   "description": "CLI for running PillowCouncil's multi-agent decision board locally.",
   "license": "MIT",
@@ -28,8 +28,6 @@
   },
   "files": [
     "bin",
-    "apps/web/.next/standalone",
-    "apps/web/.next/static",
     "apps/web/package.json",
     "README.md"
   ],
