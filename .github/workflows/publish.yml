@@ -16,6 +16,7 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
+    environment: npm-publish
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
@@ -49,3 +50,8 @@ jobs:
           generate_release_notes: true
           draft: false
           prerelease: false
+
+      - name: Publish to npm (OIDC)
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
