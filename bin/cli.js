@@ -7,7 +7,6 @@ const path = require("node:path");
 const https = require("node:https");
 const { spawn } = require("node:child_process");
 const http = require("node:http");
-const open = require("open");
 const { handleStartupFailure, resolveHost } = require("./cli-helpers.cjs");
 
 const HOST = resolveHost(process.env);
@@ -20,7 +19,7 @@ const GITHUB_REPO = "Ilbie/PillowCouncil";
 const ASSET_NAME = `pillow-council-standalone-v${PACKAGE_VERSION}.tar.gz`;
 const CACHE_DIR = path.join(os.homedir(), ".pillow-council", `v${PACKAGE_VERSION}`);
 
-// ── 캐시된 standalone 서버 경로 탐색 ──────────────────────────────────────
+// ── Cached standalone server path resolution ─────────────────────────────
 function candidateServerPaths() {
   return [
     path.join(CACHE_DIR, "apps", "web", "server.js"),
@@ -32,7 +31,7 @@ function resolveStandaloneServerPath() {
   return candidateServerPaths().find((p) => fs.existsSync(p)) ?? null;
 }
 
-// ── HTTPS GET (리다이렉트 처리) ───────────────────────────────────────────
+// ── HTTPS GET with redirect handling ─────────────────────────────────────
 function httpsGet(url) {
   return new Promise((resolve, reject) => {
     const req = https.get(url, { headers: { "User-Agent": "pillow-council-cli" } }, (res) => {
@@ -46,7 +45,7 @@ function httpsGet(url) {
   });
 }
 
-// ── GitHub Releases API로 asset URL 조회 ─────────────────────────────────
+// ── Resolve asset download URL from GitHub Releases API ──────────────────
 async function resolveAssetUrl() {
   const apiUrl = `https://api.github.com/repos/${GITHUB_REPO}/releases/tags/v${PACKAGE_VERSION}`;
   const res = await httpsGet(apiUrl);
@@ -60,8 +59,8 @@ async function resolveAssetUrl() {
 
   if (res.statusCode !== 200) {
     throw new Error(
-      `GitHub Releases API 오류 (${res.statusCode}): v${PACKAGE_VERSION} 릴리즈를 찾을 수 없습니다.\n` +
-      `https://github.com/${GITHUB_REPO}/releases 에서 확인해 주세요.`
+      `GitHub Releases API error (${res.statusCode}): Could not find release v${PACKAGE_VERSION}.\n` +
+      `Please check https://github.com/${GITHUB_REPO}/releases`
     );
   }
 
@@ -70,19 +69,32 @@ async function resolveAssetUrl() {
 
   if (!asset) {
     throw new Error(
-      `릴리즈 v${PACKAGE_VERSION}에서 '${ASSET_NAME}' asset을 찾을 수 없습니다.\n` +
-      `https://github.com/${GITHUB_REPO}/releases/tag/v${PACKAGE_VERSION} 에서 확인해 주세요.`
+      `Asset '${ASSET_NAME}' not found in release v${PACKAGE_VERSION}.\n` +
+      `Please check https://github.com/${GITHUB_REPO}/releases/tag/v${PACKAGE_VERSION}`
     );
   }
 
   return asset.browser_download_url;
 }
 
-// ── tar.gz 다운로드 + 압축 해제 ──────────────────────────────────────────
+// ── Run npm command ──────────────────────────────────────────────────────
+function runNpmCommand(args, cwd) {
+  return new Promise((resolve, reject) => {
+    const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+    const child = spawn(npm, args, { cwd, stdio: "inherit", shell: true });
+    child.once("exit", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`npm ${args.join(" ")} failed with exit code ${code}.`));
+    });
+    child.once("error", reject);
+  });
+}
+
+// ── Download tar.gz and extract ──────────────────────────────────────────
 async function downloadAndExtract(assetUrl) {
   const tarPath = path.join(os.tmpdir(), ASSET_NAME);
 
-  console.log(`⬇️  standalone 서버 다운로드 중...`);
+  console.log("Downloading standalone server...");
   const res = await httpsGet(assetUrl);
 
   await new Promise((resolve, reject) => {
@@ -93,51 +105,77 @@ async function downloadAndExtract(assetUrl) {
     res.on("error", reject);
   });
 
-  console.log(`📦  압축 해제 중...`);
+  console.log("Extracting...");
   fs.mkdirSync(CACHE_DIR, { recursive: true });
 
   await new Promise((resolve, reject) => {
-    const tar = process.platform === "win32" ? "tar" : "tar";
-    const child = spawn(tar, ["-xzf", tarPath, "-C", CACHE_DIR], {
+    const child = spawn("tar", ["-xzf", tarPath, "-C", CACHE_DIR], {
       stdio: "inherit",
       shell: process.platform === "win32",
     });
     child.once("exit", (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`tar 압축 해제 실패 (exit code ${code})`));
+      else reject(new Error(`tar extraction failed (exit code ${code})`));
     });
     child.once("error", reject);
   });
 
-  // 임시 파일 정리
-  try { fs.unlinkSync(tarPath); } catch { /* 무시 */ }
-
-  console.log(`✅  설치 완료: ${CACHE_DIR}`);
+  // Clean up temp file
+  try { fs.unlinkSync(tarPath); } catch { /* ignore */ }
 }
 
-// ── standalone 서버 확보 (캐시 or 다운로드) ──────────────────────────────
+// ── Install native dependencies (better-sqlite3) ────────────────────────
+async function installNativeDeps() {
+  const marker = path.join(CACHE_DIR, ".native-deps-installed");
+  if (fs.existsSync(marker)) return;
+
+  console.log("Installing native dependencies...");
+
+  // Install in a clean temp directory to avoid workspace package.json issues
+  const tmpInstallDir = path.join(os.tmpdir(), `pillow-council-native-${Date.now()}`);
+  fs.mkdirSync(tmpInstallDir, { recursive: true });
+  fs.writeFileSync(path.join(tmpInstallDir, "package.json"), '{"private":true}', "utf-8");
+
+  await runNpmCommand(["install", "better-sqlite3"], tmpInstallDir);
+
+  // Copy better-sqlite3 into the standalone node_modules
+  const src = path.join(tmpInstallDir, "node_modules", "better-sqlite3");
+  const dest = path.join(CACHE_DIR, "node_modules", "better-sqlite3");
+  fs.cpSync(src, dest, { recursive: true, force: true });
+
+  // Clean up temp directory
+  try { fs.rmSync(tmpInstallDir, { recursive: true, force: true }); } catch { /* ignore */ }
+
+  fs.writeFileSync(marker, new Date().toISOString(), "utf-8");
+}
+
+// ── Ensure standalone server (cache or download) ─────────────────────────
 async function ensureStandaloneServerPath() {
   let serverPath = resolveStandaloneServerPath();
-  if (serverPath) return serverPath;
 
-  console.log(`⚙️  PillowCouncil v${PACKAGE_VERSION} standalone 서버를 다운로드합니다...`);
-
-  const assetUrl = await resolveAssetUrl();
-  await downloadAndExtract(assetUrl);
-
-  serverPath = resolveStandaloneServerPath();
   if (!serverPath) {
-    throw new Error(
-      "다운로드 후에도 standalone 서버를 찾을 수 없습니다.\n" +
-      `캐시 경로: ${CACHE_DIR}\n` +
-      "수동으로 삭제 후 다시 시도해 주세요."
-    );
+    console.log(`PillowCouncil v${PACKAGE_VERSION}: Downloading standalone server...`);
+
+    const assetUrl = await resolveAssetUrl();
+    await downloadAndExtract(assetUrl);
+
+    serverPath = resolveStandaloneServerPath();
+    if (!serverPath) {
+      throw new Error(
+        "Standalone server not found after download.\n" +
+        `Cache directory: ${CACHE_DIR}\n` +
+        "Try deleting the cache directory and running again."
+      );
+    }
   }
+
+  await installNativeDeps();
+  console.log("Ready.");
 
   return serverPath;
 }
 
-// ── 포트 탐색 ─────────────────────────────────────────────────────────────
+// ── Find available port ──────────────────────────────────────────────────
 function findAvailablePort(preferredPort) {
   return new Promise((resolve, reject) => {
     const server = net.createServer();
@@ -170,7 +208,7 @@ function findAvailablePort(preferredPort) {
   });
 }
 
-// ── 서버 준비 대기 ────────────────────────────────────────────────────────
+// ── Wait for server readiness ────────────────────────────────────────────
 function waitForServer(url) {
   const startedAt = Date.now();
 
@@ -194,7 +232,18 @@ function waitForServer(url) {
   });
 }
 
-// ── 메인 ──────────────────────────────────────────────────────────────────
+// ── Open browser (ESM-compatible) ────────────────────────────────────────
+async function openBrowser(url) {
+  try {
+    const openModule = await import("open");
+    const openFn = openModule.default || openModule;
+    await openFn(url);
+  } catch (error) {
+    console.warn(`Failed to open browser automatically. Open ${url} manually.`);
+  }
+}
+
+// ── Main ─────────────────────────────────────────────────────────────────
 async function main() {
   const serverPath = await ensureStandaloneServerPath();
   const port = await findAvailablePort(DEFAULT_PORT);
@@ -226,17 +275,10 @@ async function main() {
 
   try {
     await waitForServer(url);
-    console.log(`🪴  PillowCouncil is running at ${url}`);
+    console.log(`PillowCouncil is running at ${url}`);
 
     if (shouldOpenBrowser) {
-      try {
-        await open(url);
-      } catch (error) {
-        console.warn(`Failed to open a browser automatically. Open ${url} manually.`);
-        if (error instanceof Error && error.message) {
-          console.warn(error.message);
-        }
-      }
+      await openBrowser(url);
     }
   } catch (error) {
     handleStartupFailure(child, error instanceof Error ? error : new Error(String(error)));
