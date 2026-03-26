@@ -31,7 +31,7 @@ function runBuild(packageRoot) {
     const build = spawn(
       process.platform === "win32" ? "npm.cmd" : "npm",
       ["run", "build"],
-      { cwd: packageRoot, stdio: "inherit" }
+      { cwd: packageRoot, stdio: "inherit", shell: true }
     );
     build.once("exit", (code) => {
       if (code === 0) {
