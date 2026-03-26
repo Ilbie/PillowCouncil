@@ -935,11 +935,13 @@ export function PillowCouncilApp({
     setInstallingDefaultId(id);
 
     try {
-      const response = await readJson<{ skills: SkillsSettingsDraft }>("/api/settings/defaults", {
+      await readJson<{ skills: SkillsSettingsDraft }>("/api/settings/defaults", {
         method: "POST",
         body: JSON.stringify({ kind: "skill", id })
       });
-      setSkillsSettings(response.skills);
+      // response.skills가 빈 배열일 수 있으므로 fresh reload
+      const fresh = await readJson<SkillsSettingsDraft>("/api/settings/skills");
+      setSkillsSettings(fresh);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : copy.errorFallback);
     } finally {
@@ -952,11 +954,13 @@ export function PillowCouncilApp({
     setInstallingDefaultId(id);
 
     try {
-      const response = await readJson<{ mcp: McpSettingsDraft }>("/api/settings/defaults", {
+      await readJson<{ mcp: McpSettingsDraft }>("/api/settings/defaults", {
         method: "POST",
         body: JSON.stringify({ kind: "mcp", id })
       });
-      setMcpSettings(response.mcp);
+      // response.mcp.servers가 빈 배열일 수 있으므로 fresh reload
+      const fresh = await readJson<McpSettingsDraft>("/api/settings/mcp");
+      setMcpSettings(fresh);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : copy.errorFallback);
     } finally {
@@ -1195,7 +1199,7 @@ export function PillowCouncilApp({
 
       setIsCreateSessionOpen(false);
       setSelectedId(created.sessionId);
-        launchRun(created.sessionId, "start");
+      launchRun(created.sessionId, "start");
       await refreshSessions().catch(() => undefined);
       await refreshDetail(created.sessionId).catch(() => undefined);
       setForm((current) => ({

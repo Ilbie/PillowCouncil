@@ -1,5 +1,5 @@
 import { type ChangeEvent, type FC, useState } from "react";
-import { CheckCircle2, ChevronDown, Cpu, LoaderCircle, Lock, LogIn, Plus, Settings2, Sparkles, Trash2, X } from "lucide-react";
+import { CheckCircle2, ChevronDown, Cpu, Download, LoaderCircle, Lock, LogIn, Plus, Settings2, Sparkles, Trash2, X } from "lucide-react";
 
 import { GENERATED_PRESET_AGENT_COUNT_MIN, GENERATED_PRESET_PROMPT_MIN_LENGTH } from "@pillow-council/agents";
 import type { ProviderConnectionState } from "@pillow-council/providers";
@@ -205,6 +205,10 @@ export const SettingsModal: FC<SettingsModalProps> = ({
   const [newSkillName, setNewSkillName] = useState("");
   const [newSkillDescription, setNewSkillDescription] = useState("");
   const [newSkillContent, setNewSkillContent] = useState("");
+  const [isAddMcpOpen, setIsAddMcpOpen] = useState(false);
+  const [isAddSkillOpen, setIsAddSkillOpen] = useState(false);
+  const [mcpSubTab, setMcpSubTab] = useState<"mine" | "explore">("mine");
+  const [skillSubTab, setSkillSubTab] = useState<"mine" | "explore">("mine");
   const trimmedPresetPrompt = generatedPresetPrompt.trim();
   const remainingPresetPromptCharacters = Math.max(0, GENERATED_PRESET_PROMPT_MIN_LENGTH - trimmedPresetPrompt.length);
   const presetGenerationBlockedReason = (() => {
@@ -247,601 +251,790 @@ export const SettingsModal: FC<SettingsModalProps> = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200 sm:p-6">
-      <div className="flex h-[85vh] max-h-[800px] w-full max-w-5xl overflow-hidden rounded-[24px] border border-gray-800 bg-[#0b0f19] shadow-2xl animate-in zoom-in-95 duration-200">
-        <aside className="hidden w-64 shrink-0 flex-col border-r border-gray-800 bg-[#121826] md:flex">
-          <div className="p-6">
-            <h2 className="text-lg font-bold text-white">{modalCopy.settings}</h2>
-          </div>
-
-          <nav className="flex-1 space-y-1 px-3">
-            <div className="mb-2 mt-2 px-3">
-              <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">{modalCopy.workspace}</span>
+    <>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm animate-in fade-in duration-200 sm:p-6">
+        <div className="flex h-[92vh] max-h-[920px] w-full max-w-6xl overflow-hidden rounded-[24px] border border-gray-800 bg-[#0b0f19] shadow-2xl animate-in zoom-in-95 duration-200">
+          <aside className="hidden w-64 shrink-0 flex-col border-r border-gray-800 bg-[#121826] md:flex">
+            <div className="p-6">
+              <h2 className="text-lg font-bold text-white">{modalCopy.settings}</h2>
             </div>
 
-            <button
-              type="button"
-              onClick={() => onSwitchTab("connection")}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${settingsTab === "connection" ? "bg-blue-600/10 text-blue-400" : "text-gray-400 hover:bg-gray-800/50 hover:text-gray-200"}`}
-            >
-              <Settings2 size={18} className={settingsTab === "connection" ? "text-blue-400" : "text-gray-500"} />
-              {modalCopy.connectionTab}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onSwitchTab("preset")}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${settingsTab === "preset" ? "bg-blue-600/10 text-blue-400" : "text-gray-400 hover:bg-gray-800/50 hover:text-gray-200"}`}
-            >
-              <Cpu size={18} className={settingsTab === "preset" ? "text-blue-400" : "text-gray-500"} />
-              {modalCopy.presetTab}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onSwitchTab("mcp")}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${settingsTab === "mcp" ? "bg-blue-600/10 text-blue-400" : "text-gray-400 hover:bg-gray-800/50 hover:text-gray-200"}`}
-            >
-              <Sparkles size={18} className={settingsTab === "mcp" ? "text-blue-400" : "text-gray-500"} />
-              {modalCopy.mcpTab}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => onSwitchTab("skills")}
-              className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${settingsTab === "skills" ? "bg-blue-600/10 text-blue-400" : "text-gray-400 hover:bg-gray-800/50 hover:text-gray-200"}`}
-            >
-              <Sparkles size={18} className={settingsTab === "skills" ? "text-blue-400" : "text-gray-500"} />
-              {modalCopy.skillsTab}
-            </button>
-          </nav>
-        </aside>
-
-        <div className="relative flex flex-1 flex-col overflow-hidden bg-[#0b0f19]">
-          <header className="flex shrink-0 items-center justify-between border-b border-gray-800 p-6">
-            <div>
-              <h2 className="mb-1 text-2xl font-bold text-white">
-                {settingsTab === "connection" && modalCopy.connectionTab}
-                {settingsTab === "mcp" && modalCopy.mcpTab}
-                {settingsTab === "skills" && modalCopy.skillsTab}
-                {settingsTab === "preset" && modalCopy.presetTab}
-              </h2>
-              <p className="text-sm text-gray-400">
-                {settingsTab === "connection" && modalCopy.connectionDescription}
-                {settingsTab === "mcp" && modalCopy.mcpDescription}
-                {settingsTab === "skills" && modalCopy.skillsDescription}
-                {settingsTab === "preset" && modalCopy.presetDescription}
-              </p>
-            </div>
-            <button onClick={onClose} className="-mr-2 rounded-full p-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white" aria-label={getCloseLabel(uiLocale)} type="button">
-              <X size={24} />
-            </button>
-          </header>
-
-          <div className="custom-scrollbar flex-1 overflow-y-auto p-6">
-            {settingsTab === "connection" ? (
-              <div className="max-w-2xl space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <section>
-                  <div className="mb-4 flex items-center gap-3">
-                    <div className="flex h-7 w-7 items-center justify-center rounded-full border border-blue-800/50 bg-blue-900/30 text-sm font-bold text-blue-400">1</div>
-                    <h3 className="text-lg font-semibold text-white">{modalCopy.aiProviderConnection}</h3>
-                  </div>
-
-                  <div className="flex flex-col gap-4 rounded-2xl border border-gray-800 bg-[#121826] p-5">
-                    <div className="space-y-2">
-                        <label className="mb-2 block text-sm font-medium text-gray-400">{copy.connection.provider}</label>
-                      <div className="relative">
-                        <Select className="appearance-none rounded-xl border-gray-700 bg-[#0b0f19]" value={connectionDraft.providerId} disabled={!hasProviders} onChange={(event: ChangeEvent<HTMLSelectElement>) => onConnectionProviderChange(event.target.value)}>
-                          {providerOptions.map((provider) => (
-                            <option key={provider.id} value={provider.id}>{provider.label}</option>
-                          ))}
-                        </Select>
-                        <ChevronDown size={18} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-500" />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                        <label className="mb-2 block text-sm font-medium text-gray-400">{copy.connection.loginMethod}</label>
-                      <div className="relative">
-                        <Select className="appearance-none rounded-xl border-gray-700 bg-[#0b0f19]" value={connectionDraft.authMode} disabled={!connectionProvider} onChange={(event: ChangeEvent<HTMLSelectElement>) => onConnectionAuthModeChange(event.target.value)}>
-                          {(connectionProvider?.authModes ?? []).map((authOption) => (
-                            <option key={authOption.id} value={authOption.id}>{authOption.label}</option>
-                          ))}
-                        </Select>
-                        <ChevronDown size={18} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-500" />
-                      </div>
-                      <p className="text-xs text-gray-600">{connectionAuthOption?.description ?? copy.connection.authDescriptionFallback}</p>
-                    </div>
-
-                    <div className="rounded-[18px] border border-gray-800 bg-gray-950/60 p-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-xs font-medium text-gray-400">{copy.connection.status}</span>
-                        <Badge className={isProviderConnected ? "border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] text-emerald-400" : "border-gray-700 bg-gray-800 px-2.5 py-1 text-[10px] text-gray-400"}>
-                          {isProviderConnected ? copy.connection.connected : copy.connection.notConnected}
-                        </Badge>
-                      </div>
-                      <p className="mt-2 text-xs leading-5 text-gray-500">{isProviderConnected ? copy.connection.connectedDescription : copy.connection.notConnectedDescription}</p>
-                    </div>
-
-                    {connectionAuthOption?.type === "api" ? (
-                      <div className="space-y-2">
-                        <label className="mb-2 block text-sm font-medium text-gray-400">{connectionAuthOption.inputLabel ?? copy.connection.apiKey}</label>
-                        <Input type="password" className="rounded-xl border-gray-700 bg-[#0b0f19]" value={connectionDraft.apiKey} onChange={(event: ChangeEvent<HTMLInputElement>) => onConnectionApiKeyChange(event.target.value)} placeholder={connectionAuthOption.inputPlaceholder ?? copy.connection.apiPlaceholder} />
-                        <p className="text-xs leading-5 text-gray-500">{copy.connection.apiHelp}</p>
-                      </div>
-                    ) : null}
-
-                    {connectionAuthOption?.type === "oauth" ? (
-                      <div className="rounded-[20px] border border-gray-800 bg-gray-900/70 p-4">
-                        <div className="flex flex-wrap gap-2">
-                          {isProviderConnected ? (
-                            <Button type="button" variant="ghost" size="sm" className="h-10 rounded-xl border border-gray-700 bg-gray-800 px-4 text-gray-200 hover:bg-gray-700" onClick={onDisconnectAuth}>
-                              {copy.connection.disconnect}
-                            </Button>
-                          ) : (
-                            <Button type="button" size="sm" className="h-10 rounded-xl bg-blue-600 px-4 text-white hover:bg-blue-500" onClick={onOpenLogin}>
-                              <LogIn className="mr-2 h-4 w-4" />
-                              {copy.connection.openLogin}
-                            </Button>
-                          )}
-                        </div>
-                        <p className="mt-3 text-xs leading-5 text-gray-500">{isProviderConnected ? copy.connection.oauthConnectedDescription : copy.connection.oauthStartDescription}</p>
-                      </div>
-                    ) : null}
-
-                    {pendingOauth ? (
-                      <div className="rounded-[20px] border border-orange-500/20 bg-orange-500/8 p-4">
-                        <p className="text-sm font-medium text-gray-100">{copy.connection.oauthProgress}</p>
-                        <p className="mt-2 text-xs leading-5 text-gray-400">{pendingOauth.instructions}</p>
-                        {pendingOauth.method === "code" ? (
-                          <div className="mt-3 space-y-3">
-                            <Input className="h-12 rounded-[18px] border-orange-500/20 bg-gray-900/80 text-sm text-gray-100" value={pendingOauth.code} onChange={(event: ChangeEvent<HTMLInputElement>) => onPendingOauthCodeChange(event.target.value)} placeholder={copy.connection.oauthCodePlaceholder} />
-                            <Button type="button" className="h-11 w-full rounded-xl bg-blue-600 text-white hover:bg-blue-500" onClick={onCompleteOauth} disabled={pendingOauth.isSubmitting || pendingOauth.code.trim().length === 0}>
-                              {pendingOauth.isSubmitting ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <LogIn className="mr-2 h-4 w-4" />}
-                              {copy.connection.oauthComplete}
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="mt-3 space-y-2">
-                            <p className="text-xs leading-5 text-gray-400">{copy.connection.oauthAutoDescription}</p>
-                            <p className="text-xs leading-5 text-gray-500">{copy.connection.oauthFallbackHint}</p>
-                          </div>
-                        )}
-                      </div>
-                    ) : null}
-
-                    <div className="space-y-2 pt-1">
-                      <button type="button" className={`flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-medium transition-all duration-200 ${isSettingsConnectionSaved ? "border border-gray-700 bg-gray-800 text-green-400" : connectionProvider ? "bg-blue-600 text-white hover:bg-blue-700" : "cursor-not-allowed bg-gray-800 text-gray-500"}`} onClick={onSaveConnection} disabled={isSavingConnection || !connectionProvider}>
-                         {isSavingConnection ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : isSettingsConnectionSaved ? <><CheckCircle2 size={18} /> {copy.connection.connected}</> : copy.connection.save}
-                      </button>
-                      <p className="text-xs leading-5 text-gray-500">{copy.connection.savedAt}: {formatUiTimestamp(savedSettings.updatedAt, uiLocale)}</p>
-                    </div>
-                  </div>
-
-                  {isSettingsConnectionSaved ? (
-                    <div className="flex flex-col items-start justify-between gap-4 rounded-xl border border-blue-800/50 bg-blue-900/20 p-5 animate-in fade-in zoom-in-95 duration-300 sm:flex-row sm:items-center">
-                      <div>
-                        <h4 className="mb-1 font-medium text-blue-100">{modalCopy.connectionReadyTitle}</h4>
-                        <p className="text-sm text-blue-300/80">{modalCopy.connectionReadyDescription}</p>
-                      </div>
-                      <button type="button" onClick={() => onSwitchTab("preset")} className="whitespace-nowrap rounded-lg bg-blue-600/20 px-4 py-2 text-sm font-medium text-blue-400 transition-colors hover:bg-blue-600/30">
-                        {modalCopy.moveToPresetStudio}
-                      </button>
-                    </div>
-                  ) : null}
-                </section>
+            <nav className="flex-1 space-y-1 px-3">
+              <div className="mb-2 mt-2 px-3">
+                <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">{modalCopy.workspace}</span>
               </div>
-            ) : null}
 
-            {settingsTab === "mcp" ? (
-              <div className="max-w-2xl space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <section>
-                  <div className="mb-4 flex items-center gap-3">
-                    <div className="flex h-7 w-7 items-center justify-center rounded-full border border-blue-800/50 bg-blue-900/30 text-sm font-bold text-blue-400">2</div>
-                    <h3 className="text-lg font-semibold text-white">{modalCopy.mcpServers}</h3>
-                  </div>
+              <button
+                type="button"
+                onClick={() => onSwitchTab("connection")}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${settingsTab === "connection" ? "bg-blue-600/10 text-blue-400" : "text-gray-400 hover:bg-gray-800/50 hover:text-gray-200"}`}
+              >
+                <Settings2 size={18} className={settingsTab === "connection" ? "text-blue-400" : "text-gray-500"} />
+                {modalCopy.connectionTab}
+              </button>
 
-                  <div className="space-y-4 rounded-2xl border border-gray-800 bg-[#121826] p-5">
-                    <label className="flex items-start gap-3 rounded-[18px] border border-gray-800 bg-[#0b0f19] p-4 text-sm text-gray-200">
-                      <input
-                        type="checkbox"
-                        className="mt-1 h-4 w-4 rounded border-gray-600 bg-gray-900 text-blue-500"
-                        checked={mcpSettings.enabled}
-                        onChange={(event: ChangeEvent<HTMLInputElement>) => onMcpSettingsChange({ ...mcpSettings, enabled: event.target.checked })}
-                      />
-                      <span className="space-y-1">
-                        <span className="block font-medium text-gray-100">{modalCopy.mcpEnabledTitle}</span>
-                        <span className="block text-xs leading-5 text-gray-500">{modalCopy.mcpEnabledDescription}</span>
-                      </span>
-                    </label>
+              <button
+                type="button"
+                onClick={() => onSwitchTab("preset")}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${settingsTab === "preset" ? "bg-blue-600/10 text-blue-400" : "text-gray-400 hover:bg-gray-800/50 hover:text-gray-200"}`}
+              >
+                <Cpu size={18} className={settingsTab === "preset" ? "text-blue-400" : "text-gray-500"} />
+                {modalCopy.presetTab}
+              </button>
 
-                    <div className="space-y-3">
-                      {defaultInstallCatalog.mcpServers.length > 0 ? (
-                        <div className="rounded-[18px] border border-cyan-500/20 bg-cyan-500/5 p-4">
-                          <div className="mb-3 text-xs font-medium uppercase tracking-wide text-cyan-100/80">{modalCopy.quickMcpInstall}</div>
-                          <div className="space-y-3">
-                            {defaultInstallCatalog.mcpServers.map((server) => (
-                              <div key={server.id} className="flex items-start justify-between gap-3 rounded-xl border border-gray-800 bg-[#0b0f19] p-3">
-                                <div>
-                                  <div className="font-medium text-gray-100">{server.name}</div>
-                                  <div className="mt-1 text-xs text-gray-500">{server.description}</div>
-                                  <div className="mt-2 text-[11px] text-cyan-200/80">{server.command.join(" ")} · {server.sourceLabel}</div>
-                                </div>
-                                <Button
-                                  type="button"
-                                  className="rounded-xl bg-cyan-100 px-4 text-cyan-950 hover:bg-white"
-                                  disabled={installingDefaultId === server.id}
-                                  onClick={() => onInstallDefaultMcp(server.id)}
-                                >
-                                  {installingDefaultId === server.id ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Plus size={16} className="mr-1" />}
-                                  {modalCopy.installNow}
-                                </Button>
-                              </div>
+              <button
+                type="button"
+                onClick={() => onSwitchTab("mcp")}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${settingsTab === "mcp" ? "bg-blue-600/10 text-blue-400" : "text-gray-400 hover:bg-gray-800/50 hover:text-gray-200"}`}
+              >
+                <Sparkles size={18} className={settingsTab === "mcp" ? "text-blue-400" : "text-gray-500"} />
+                {modalCopy.mcpTab}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onSwitchTab("skills")}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-colors ${settingsTab === "skills" ? "bg-blue-600/10 text-blue-400" : "text-gray-400 hover:bg-gray-800/50 hover:text-gray-200"}`}
+              >
+                <Sparkles size={18} className={settingsTab === "skills" ? "text-blue-400" : "text-gray-500"} />
+                {modalCopy.skillsTab}
+              </button>
+            </nav>
+          </aside>
+
+          <div className="relative flex flex-1 flex-col overflow-hidden bg-[#0b0f19]">
+            <header className="flex shrink-0 items-center justify-between border-b border-gray-800 p-6">
+              <div>
+                <h2 className="mb-1 text-2xl font-bold text-white">
+                  {settingsTab === "connection" && modalCopy.connectionTab}
+                  {settingsTab === "mcp" && modalCopy.mcpTab}
+                  {settingsTab === "skills" && modalCopy.skillsTab}
+                  {settingsTab === "preset" && modalCopy.presetTab}
+                </h2>
+                <p className="text-sm text-gray-400">
+                  {settingsTab === "connection" && modalCopy.connectionDescription}
+                  {settingsTab === "mcp" && modalCopy.mcpDescription}
+                  {settingsTab === "skills" && modalCopy.skillsDescription}
+                  {settingsTab === "preset" && modalCopy.presetDescription}
+                </p>
+              </div>
+              <button onClick={onClose} className="-mr-2 rounded-full p-2 text-gray-400 transition-colors hover:bg-gray-800 hover:text-white" aria-label={getCloseLabel(uiLocale)} type="button">
+                <X size={24} />
+              </button>
+            </header>
+
+            <div className="custom-scrollbar flex-1 overflow-y-auto p-6">
+              {settingsTab === "connection" ? (
+                <div className="max-w-2xl space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <section>
+                    <div className="mb-4 flex items-center gap-3">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full border border-blue-800/50 bg-blue-900/30 text-sm font-bold text-blue-400">1</div>
+                      <h3 className="text-lg font-semibold text-white">{modalCopy.aiProviderConnection}</h3>
+                    </div>
+
+                    <div className="flex flex-col gap-4 rounded-2xl border border-gray-800 bg-[#121826] p-5">
+                      <div className="space-y-2">
+                        <label className="mb-2 block text-sm font-medium text-gray-400">{copy.connection.provider}</label>
+                        <div className="relative">
+                          <Select className="appearance-none rounded-xl border-gray-700 bg-[#0b0f19]" value={connectionDraft.providerId} disabled={!hasProviders} onChange={(event: ChangeEvent<HTMLSelectElement>) => onConnectionProviderChange(event.target.value)}>
+                            {providerOptions.map((provider) => (
+                              <option key={provider.id} value={provider.id}>{provider.label}</option>
                             ))}
-                          </div>
+                          </Select>
+                          <ChevronDown size={18} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-500" />
+                        </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="mb-2 block text-sm font-medium text-gray-400">{copy.connection.loginMethod}</label>
+                        <div className="relative">
+                          <Select className="appearance-none rounded-xl border-gray-700 bg-[#0b0f19]" value={connectionDraft.authMode} disabled={!connectionProvider} onChange={(event: ChangeEvent<HTMLSelectElement>) => onConnectionAuthModeChange(event.target.value)}>
+                            {(connectionProvider?.authModes ?? []).map((authOption) => (
+                              <option key={authOption.id} value={authOption.id}>{authOption.label}</option>
+                            ))}
+                          </Select>
+                          <ChevronDown size={18} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-500" />
+                        </div>
+                        <p className="text-xs text-gray-600">{connectionAuthOption?.description ?? copy.connection.authDescriptionFallback}</p>
+                      </div>
+
+                      <div className="rounded-[18px] border border-gray-800 bg-gray-950/60 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-xs font-medium text-gray-400">{copy.connection.status}</span>
+                          <Badge className={isProviderConnected ? "border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] text-emerald-400" : "border-gray-700 bg-gray-800 px-2.5 py-1 text-[10px] text-gray-400"}>
+                            {isProviderConnected ? copy.connection.connected : copy.connection.notConnected}
+                          </Badge>
+                        </div>
+                        <p className="mt-2 text-xs leading-5 text-gray-500">{isProviderConnected ? copy.connection.connectedDescription : copy.connection.notConnectedDescription}</p>
+                      </div>
+
+                      {connectionAuthOption?.type === "api" ? (
+                        <div className="space-y-2">
+                          <label className="mb-2 block text-sm font-medium text-gray-400">{connectionAuthOption.inputLabel ?? copy.connection.apiKey}</label>
+                          <Input type="password" className="rounded-xl border-gray-700 bg-[#0b0f19]" value={connectionDraft.apiKey} onChange={(event: ChangeEvent<HTMLInputElement>) => onConnectionApiKeyChange(event.target.value)} placeholder={connectionAuthOption.inputPlaceholder ?? copy.connection.apiPlaceholder} />
+                          <p className="text-xs leading-5 text-gray-500">{copy.connection.apiHelp}</p>
                         </div>
                       ) : null}
 
-                      {mcpSettings.servers.map((server, index) => {
-                        const serverIdentity =
-                          server.type === "local"
-                            ? `${server.name}-${server.type}-${server.command.join(" ")}`
-                            : `${server.name}-${server.type}-${server.url}`;
+                      {connectionAuthOption?.type === "oauth" ? (
+                        <div className="rounded-[20px] border border-gray-800 bg-gray-900/70 p-4">
+                          <div className="flex flex-wrap gap-2">
+                            {isProviderConnected ? (
+                              <Button type="button" variant="ghost" size="sm" className="h-10 rounded-xl border border-gray-700 bg-gray-800 px-4 text-gray-200 hover:bg-gray-700" onClick={onDisconnectAuth}>
+                                {copy.connection.disconnect}
+                              </Button>
+                            ) : (
+                              <Button type="button" size="sm" className="h-10 rounded-xl bg-blue-600 px-4 text-white hover:bg-blue-500" onClick={onOpenLogin}>
+                                <LogIn className="mr-2 h-4 w-4" />
+                                {copy.connection.openLogin}
+                              </Button>
+                            )}
+                          </div>
+                          <p className="mt-3 text-xs leading-5 text-gray-500">{isProviderConnected ? copy.connection.oauthConnectedDescription : copy.connection.oauthStartDescription}</p>
+                        </div>
+                      ) : null}
 
-                        return (
-                          <div
-                            key={`${serverIdentity}-${index}`}
-                            className="rounded-[18px] border border-gray-800 bg-[#0b0f19] p-4 text-sm text-gray-200"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <div className="font-medium text-gray-100">{server.name}</div>
-                                <div className="mt-1 text-xs text-gray-500">{server.type === "local" ? server.command?.join(" ") : server.url}</div>
-                                  <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-500">
-                                   <span>{modalCopy.mcpStatusLabel}: {server.status ?? "unknown"}</span>
-                                   <span>{modalCopy.mcpResourcesLabel}: {server.resourceCount ?? 0}</span>
-                                  </div>
+                      {pendingOauth ? (
+                        <div className="rounded-[20px] border border-orange-500/20 bg-orange-500/8 p-4">
+                          <p className="text-sm font-medium text-gray-100">{copy.connection.oauthProgress}</p>
+                          <p className="mt-2 text-xs leading-5 text-gray-400">{pendingOauth.instructions}</p>
+                          {pendingOauth.method === "code" ? (
+                            <div className="mt-3 space-y-3">
+                              <Input className="h-12 rounded-[18px] border-orange-500/20 bg-gray-900/80 text-sm text-gray-100" value={pendingOauth.code} onChange={(event: ChangeEvent<HTMLInputElement>) => onPendingOauthCodeChange(event.target.value)} placeholder={copy.connection.oauthCodePlaceholder} />
+                              <Button type="button" className="h-11 w-full rounded-xl bg-blue-600 text-white hover:bg-blue-500" onClick={onCompleteOauth} disabled={pendingOauth.isSubmitting || pendingOauth.code.trim().length === 0}>
+                                {pendingOauth.isSubmitting ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <LogIn className="mr-2 h-4 w-4" />}
+                                {copy.connection.oauthComplete}
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="mt-3 space-y-2">
+                              <p className="text-xs leading-5 text-gray-400">{copy.connection.oauthAutoDescription}</p>
+                              <p className="text-xs leading-5 text-gray-500">{copy.connection.oauthFallbackHint}</p>
+                            </div>
+                          )}
+                        </div>
+                      ) : null}
+
+                      <div className="space-y-2 pt-1">
+                        <button type="button" className={`flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-medium transition-all duration-200 ${isSettingsConnectionSaved ? "border border-gray-700 bg-gray-800 text-green-400" : connectionProvider ? "bg-blue-600 text-white hover:bg-blue-700" : "cursor-not-allowed bg-gray-800 text-gray-500"}`} onClick={onSaveConnection} disabled={isSavingConnection || !connectionProvider}>
+                          {isSavingConnection ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : isSettingsConnectionSaved ? <><CheckCircle2 size={18} /> {copy.connection.connected}</> : copy.connection.save}
+                        </button>
+                        <p className="text-xs leading-5 text-gray-500">{copy.connection.savedAt}: {formatUiTimestamp(savedSettings.updatedAt, uiLocale)}</p>
+                      </div>
+                    </div>
+
+                    {isSettingsConnectionSaved ? (
+                      <div className="flex flex-col items-start justify-between gap-4 rounded-xl border border-blue-800/50 bg-blue-900/20 p-5 animate-in fade-in zoom-in-95 duration-300 sm:flex-row sm:items-center">
+                        <div>
+                          <h4 className="mb-1 font-medium text-blue-100">{modalCopy.connectionReadyTitle}</h4>
+                          <p className="text-sm text-blue-300/80">{modalCopy.connectionReadyDescription}</p>
+                        </div>
+                        <button type="button" onClick={() => onSwitchTab("preset")} className="whitespace-nowrap rounded-lg bg-blue-600/20 px-4 py-2 text-sm font-medium text-blue-400 transition-colors hover:bg-blue-600/30">
+                          {modalCopy.moveToPresetStudio}
+                        </button>
+                      </div>
+                    ) : null}
+                  </section>
+                </div>
+              ) : null}
+
+              {settingsTab === "mcp" ? (
+                <div className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  {/* MCP 헤더: 타이틀 + 전역 토글 + 서브탭 */}
+                  <div className="mb-6">
+                    <div className="mb-5 flex items-center justify-between">
+                      <div>
+                        <h3 className="text-xl font-bold text-white">{modalCopy.mcpServers}</h3>
+                        <p className="mt-1 text-sm text-gray-500">{modalCopy.mcpEnabledDescription}</p>
+                      </div>
+                      {/* 토글 스위치 */}
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={mcpSettings.enabled}
+                        onClick={() => onMcpSettingsChange({ ...mcpSettings, enabled: !mcpSettings.enabled })}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${mcpSettings.enabled ? "bg-blue-600" : "bg-gray-700"
+                          }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ${mcpSettings.enabled ? "translate-x-5" : "translate-x-0"
+                            }`}
+                        />
+                      </button>
+                    </div>
+
+                    {/* 서브탭 */}
+                    <div className="flex items-center gap-1 rounded-xl bg-gray-900/80 p-1">
+                      <button
+                        type="button"
+                        onClick={() => setMcpSubTab("mine")}
+                        className={`flex-1 rounded-lg py-2 text-sm font-medium transition-colors ${mcpSubTab === "mine" ? "bg-[#1c2538] text-white shadow" : "text-gray-500 hover:text-gray-300"
+                          }`}
+                      >
+                        {uiLocale === "ja" ? "マイ MCP" : uiLocale === "ko" ? "내 MCP" : "My MCP"}
+                        {mcpSettings.servers.length > 0 && (
+                          <span className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${mcpSubTab === "mine" ? "bg-blue-600/30 text-blue-300" : "bg-gray-700 text-gray-400"
+                            }`}>{mcpSettings.servers.length}</span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMcpSubTab("explore")}
+                        className={`flex-1 rounded-lg py-2 text-sm font-medium transition-colors ${mcpSubTab === "explore" ? "bg-[#1c2538] text-white shadow" : "text-gray-500 hover:text-gray-300"
+                          }`}
+                      >
+                        {uiLocale === "ja" ? "探索" : uiLocale === "ko" ? "탐색" : "Explore"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 서브탭: 내 MCP */}
+                  {mcpSubTab === "mine" ? (
+                    <div className="flex flex-col gap-2 min-h-0">
+                      {mcpSettings.servers.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-16 text-center">
+                          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-gray-800">
+                            <Sparkles size={22} className="text-gray-500" />
+                          </div>
+                          <p className="text-sm font-medium text-gray-400">
+                            {uiLocale === "ja" ? "MCP サーバーがありません" : uiLocale === "ko" ? "아직 추가된 MCP가 없어요" : "No MCP servers yet"}
+                          </p>
+                          <p className="mt-1 text-xs text-gray-600">
+                            {uiLocale === "ja" ? "탐색'タブから追加してみてください" : uiLocale === "ko" ? "탐색 탭에서 바로 설치해 보세요" : "Try installing from the Explore tab"}
+                          </p>
+                        </div>
+                      ) : (
+                        mcpSettings.servers.map((server, index) => {
+                          const serverIdentity =
+                            server.type === "local"
+                              ? `${server.name}-${server.type}-${server.command.join(" ")}`
+                              : `${server.name}-${server.type}-${server.url}`;
+                          return (
+                            <div
+                              key={`${serverIdentity}-${index}`}
+                              className="flex items-center gap-4 rounded-2xl bg-gray-900/60 px-4 py-3.5 transition-colors hover:bg-gray-900"
+                            >
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gray-800">
+                                <Sparkles size={16} className="text-blue-400" />
                               </div>
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  className="h-4 w-4 rounded border-gray-600 bg-gray-900 text-blue-500"
-                                  checked={server.enabled}
-                                  onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                                    const nextServers = [...mcpSettings.servers];
-                                    nextServers[index] = { ...server, enabled: event.target.checked };
-                                    onMcpSettingsChange({ ...mcpSettings, servers: nextServers });
-                                  }}
-                                />
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-gray-100 truncate">{server.name}</div>
+                                <div className="mt-0.5 text-xs text-gray-500 truncate">{server.type === "local" ? server.command?.join(" ") : server.url}</div>
+                                {server.status ? (
+                                  <div className={`mt-1 text-[10px] font-medium ${server.status === "connected" ? "text-green-400" : server.status === "failed" ? "text-red-400" : "text-gray-500"
+                                    }`}>
+                                    {server.status} {server.resourceCount ? `· ${server.resourceCount} resources` : ""}
+                                  </div>
+                                ) : null}
+                              </div>
+                              <div className="flex items-center gap-3 shrink-0">
+                                {/* 토글 */}
                                 <button
                                   type="button"
-                                  className="rounded-lg border border-gray-700 p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100"
-                                  onClick={() => onMcpSettingsChange({ ...mcpSettings, servers: mcpSettings.servers.filter((_, itemIndex) => itemIndex !== index) })}
+                                  role="switch"
+                                  aria-checked={server.enabled}
+                                  onClick={() => {
+                                    const nextServers = [...mcpSettings.servers];
+                                    nextServers[index] = { ...server, enabled: !server.enabled };
+                                    onMcpSettingsChange({ ...mcpSettings, servers: nextServers });
+                                  }}
+                                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 ${server.enabled ? "bg-blue-600" : "bg-gray-700"
+                                    }`}
+                                >
+                                  <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform duration-200 ${server.enabled ? "translate-x-4" : "translate-x-0"
+                                    }`} />
+                                </button>
+                                {/* 삭제 */}
+                                <button
+                                  type="button"
+                                  className="rounded-lg p-1.5 text-gray-600 hover:bg-gray-800 hover:text-red-400 transition-colors"
+                                  onClick={() => onMcpSettingsChange({ ...mcpSettings, servers: mcpSettings.servers.filter((_, i) => i !== index) })}
                                   aria-label={modalCopy.removeLabel(server.name)}
                                 >
                                   <Trash2 size={14} />
                                 </button>
                               </div>
                             </div>
+                          );
+                        })
+                      )}
+
+                      {/* + 추가 버튼 */}
+                      <button
+                        type="button"
+                        onClick={() => setIsAddMcpOpen(true)}
+                        className="mt-1 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-gray-800 py-3 text-sm font-medium text-gray-600 transition-colors hover:border-gray-600 hover:text-gray-300"
+                      >
+                        <Plus size={15} />
+                        {modalCopy.addMcp}
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {/* 서브탭: 탐색 */}
+                  {mcpSubTab === "explore" ? (
+                    <div className="space-y-2">
+                      {defaultInstallCatalog.mcpServers.map((server) => {
+                        const isInstalled = mcpSettings.servers.some((s) => s.name === server.name);
+                        return (
+                          <div
+                            key={server.id}
+                            className="flex items-center gap-4 rounded-2xl bg-gray-900/60 px-4 py-3.5 transition-colors hover:bg-gray-900"
+                          >
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gray-800">
+                              <Sparkles size={16} className="text-cyan-400" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-gray-100">{server.name}</div>
+                              <div className="mt-0.5 text-xs text-gray-500 leading-4">{server.description}</div>
+                              <div className="mt-1 text-[10px] text-cyan-500/70">{server.command.join(" ")}</div>
+                            </div>
+                            {isInstalled ? (
+                              <span className="shrink-0 rounded-full bg-green-500/10 px-2.5 py-1 text-xs font-medium text-green-400">
+                                {uiLocale === "ja" ? "設置済" : uiLocale === "ko" ? "설치됨" : "Installed"}
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={installingDefaultId === server.id}
+                                onClick={() => onInstallDefaultMcp(server.id)}
+                                className="shrink-0 flex items-center gap-1.5 rounded-xl bg-blue-600/15 px-3 py-1.5 text-xs font-semibold text-blue-400 transition-colors hover:bg-blue-600/25 disabled:opacity-50"
+                              >
+                                {installingDefaultId === server.id
+                                  ? <span className="h-3 w-3 animate-spin rounded-full border border-blue-400/50 border-t-blue-400" />
+                                  : <Download size={12} />}
+                                {uiLocale === "ja" ? "インストール" : uiLocale === "ko" ? "설치" : "Install"}
+                              </button>
+                            )}
                           </div>
                         );
                       })}
                     </div>
+                  ) : null}
 
-                    <div className="rounded-[18px] border border-dashed border-gray-800 bg-[#0b0f19] p-4">
-                      <div className="grid gap-3 sm:grid-cols-[1fr_140px]">
-                        <Input value={newMcpName} onChange={(event: ChangeEvent<HTMLInputElement>) => setNewMcpName(event.target.value)} placeholder={modalCopy.serverNamePlaceholder} className="rounded-xl border-gray-700 bg-[#121826]" />
-                        <div className="relative">
-                          <Select value={newMcpType} onChange={(event: ChangeEvent<HTMLSelectElement>) => setNewMcpType(event.target.value as "local" | "remote")} className="rounded-xl border-gray-700 bg-[#121826]">
-                            <option value="local">{modalCopy.localOption}</option>
-                            <option value="remote">{modalCopy.remoteOption}</option>
-                          </Select>
-                          <ChevronDown size={18} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-500" />
-                        </div>
-                      </div>
-                      <div className="mt-3 flex gap-3">
-                        <Input value={newMcpTarget} onChange={(event: ChangeEvent<HTMLInputElement>) => setNewMcpTarget(event.target.value)} placeholder={newMcpType === "local" ? "npx -y @modelcontextprotocol/server-github" : "https://mcp.example.com"} className="rounded-xl border-gray-700 bg-[#121826]" />
-                        <Button
-                          type="button"
-                          className="rounded-xl bg-gray-100 px-4 text-gray-900 hover:bg-white"
-                          onClick={() => {
-                            const name = newMcpName.trim();
-                            const target = newMcpTarget.trim();
-                            if (!name || !target) {
-                              return;
-                            }
-
-                            const nextServer = newMcpType === "local"
-                              ? { name, enabled: true, type: "local" as const, command: target.split(/\s+/).filter(Boolean), resourceCount: 0 }
-                              : { name, enabled: true, type: "remote" as const, url: target, resourceCount: 0 };
-                            onMcpSettingsChange({ ...mcpSettings, servers: [...mcpSettings.servers, nextServer] });
-                            setNewMcpName("");
-                            setNewMcpTarget("");
-                          }}
-                        >
-                          <Plus size={16} className="mr-1" />
-                          {modalCopy.addMcp}
-                        </Button>
-                      </div>
-                      <p className="mt-3 text-xs leading-5 text-gray-500">{modalCopy.localMcpHint}</p>
-                    </div>
-
-                    <div className="rounded-[18px] border border-gray-800 bg-gray-950/60 p-4 text-xs leading-5 text-gray-500">
-                      {modalCopy.mcpInfo(savedSettings.modelId)}
-                    </div>
-
-                    <div className="space-y-2 pt-1">
+                  {/* Sticky 저장바 */}
+                  <div className="mt-auto pt-5">
+                    <div className="flex items-center justify-between rounded-2xl bg-gray-900/80 px-4 py-3">
+                      <p className="text-xs text-gray-500">{modalCopy.mcpSaveHint}</p>
                       <button
                         type="button"
-                        className={`flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-medium transition-all duration-200 ${isSavingMcpSettings ? "bg-gray-700 text-gray-300" : "bg-blue-600 text-white hover:bg-blue-700"}`}
+                        className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all duration-200 ${isSavingMcpSettings ? "bg-gray-700 text-gray-400" : "bg-blue-600 text-white hover:bg-blue-500"
+                          }`}
                         onClick={onSaveMcpSettings}
                         disabled={isSavingMcpSettings}
                       >
-                        {isSavingMcpSettings ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : modalCopy.saveMcp}
+                        {isSavingMcpSettings
+                          ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                          : null}
+                        {modalCopy.saveMcp}
                       </button>
-                      <p className="text-xs leading-5 text-gray-500">{modalCopy.mcpSaveHint}</p>
                     </div>
                   </div>
-                </section>
-              </div>
-            ) : null}
+                </div>
+              ) : null}
 
-            {settingsTab === "skills" ? (
-              <div className="max-w-2xl space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <section>
-                  <div className="mb-4 flex items-center gap-3">
-                    <div className="flex h-7 w-7 items-center justify-center rounded-full border border-blue-800/50 bg-blue-900/30 text-sm font-bold text-blue-400">3</div>
-                    <h3 className="text-lg font-semibold text-white">{modalCopy.projectSkills}</h3>
+              {settingsTab === "skills" ? (
+                <div className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  {/* 스킬 헤더 */}
+                  <div className="mb-6">
+                    <div className="mb-5 flex items-center justify-between">
+                      <div>
+                        <h3 className="text-xl font-bold text-white">{modalCopy.projectSkills}</h3>
+                        <p className="mt-1 text-sm text-gray-500">{modalCopy.skillEnabledDescription}</p>
+                      </div>
+                      {/* 토글 스위치 */}
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={skillsSettings.enabled}
+                        onClick={() => onSkillsSettingsChange({ ...skillsSettings, enabled: !skillsSettings.enabled })}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 focus:outline-none ${skillsSettings.enabled ? "bg-blue-600" : "bg-gray-700"
+                          }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ${skillsSettings.enabled ? "translate-x-5" : "translate-x-0"
+                            }`}
+                        />
+                      </button>
+                    </div>
+
+                    {/* 서브탭 */}
+                    <div className="flex items-center gap-1 rounded-xl bg-gray-900/80 p-1">
+                      <button
+                        type="button"
+                        onClick={() => setSkillSubTab("mine")}
+                        className={`flex-1 rounded-lg py-2 text-sm font-medium transition-colors ${skillSubTab === "mine" ? "bg-[#1c2538] text-white shadow" : "text-gray-500 hover:text-gray-300"
+                          }`}
+                      >
+                        {uiLocale === "ja" ? "マイスキル" : uiLocale === "ko" ? "내 스킬" : "My Skills"}
+                        {skillsSettings.managed.length > 0 && (
+                          <span className={`ml-2 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${skillSubTab === "mine" ? "bg-blue-600/30 text-blue-300" : "bg-gray-700 text-gray-400"
+                            }`}>{skillsSettings.managed.length}</span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setSkillSubTab("explore")}
+                        className={`flex-1 rounded-lg py-2 text-sm font-medium transition-colors ${skillSubTab === "explore" ? "bg-[#1c2538] text-white shadow" : "text-gray-500 hover:text-gray-300"
+                          }`}
+                      >
+                        {uiLocale === "ja" ? "探索" : uiLocale === "ko" ? "탐색" : "Explore"}
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="space-y-4 rounded-2xl border border-gray-800 bg-[#121826] p-5">
-                    <label className="flex items-start gap-3 rounded-[18px] border border-gray-800 bg-[#0b0f19] p-4 text-sm text-gray-200">
-                      <input
-                        type="checkbox"
-                        className="mt-1 h-4 w-4 rounded border-gray-600 bg-gray-900 text-blue-500"
-                        checked={skillsSettings.enabled}
-                        onChange={(event: ChangeEvent<HTMLInputElement>) => onSkillsSettingsChange({ ...skillsSettings, enabled: event.target.checked })}
-                      />
-                      <span className="space-y-1">
-                        <span className="block font-medium text-gray-100">{modalCopy.skillEnabledTitle}</span>
-                        <span className="block text-xs leading-5 text-gray-500">{modalCopy.skillEnabledDescription}</span>
-                      </span>
-                    </label>
-
-                    <div className="space-y-3">
-                      {defaultInstallCatalog.skills.length > 0 ? (
-                        <div className="rounded-[18px] border border-cyan-500/20 bg-cyan-500/5 p-4">
-                          <div className="mb-3 text-xs font-medium uppercase tracking-wide text-cyan-100/80">{modalCopy.quickSkillInstall}</div>
-                          <div className="space-y-3">
-                            {defaultInstallCatalog.skills.map((skill) => (
-                              <div key={skill.id} className="flex items-start justify-between gap-3 rounded-xl border border-gray-800 bg-[#0b0f19] p-3">
-                                <div>
-                                  <div className="font-medium text-gray-100">{skill.name}</div>
-                                  <div className="mt-1 text-xs text-gray-500">{skill.description}</div>
-                                  <div className="mt-2 text-[11px] text-cyan-200/80">{skill.sourceLabel}</div>
-                                </div>
-                                <Button
-                                  type="button"
-                                  className="rounded-xl bg-cyan-100 px-4 text-cyan-950 hover:bg-white"
-                                  disabled={installingDefaultId === skill.id}
-                                  onClick={() => onInstallDefaultSkill(skill.id)}
-                                >
-                                  {installingDefaultId === skill.id ? <LoaderCircle className="mr-2 h-4 w-4 animate-spin" /> : <Plus size={16} className="mr-1" />}
-                                  {modalCopy.installNow}
-                                </Button>
-                              </div>
-                            ))}
+                  {/* 서브탭: 내 스킬 */}
+                  {skillSubTab === "mine" ? (
+                    <div className="flex flex-col gap-2 min-h-0">
+                      {skillsSettings.managed.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center py-16 text-center">
+                          <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-gray-800">
+                            <Sparkles size={22} className="text-gray-500" />
                           </div>
+                          <p className="text-sm font-medium text-gray-400">
+                            {uiLocale === "ja" ? "スキルがありません" : uiLocale === "ko" ? "아직 추가된 스킬이 없어요" : "No skills yet"}
+                          </p>
+                          <p className="mt-1 text-xs text-gray-600">
+                            {uiLocale === "ja" ? "探索'タブから追加してみてください" : uiLocale === "ko" ? "탐색 탭에서 바로 설치해 보세요" : "Try installing from the Explore tab"}
+                          </p>
                         </div>
-                      ) : null}
-
-                      {skillsSettings.managed.map((skill, index) => {
-                        const skillIdentity = `${skill.name}-${skill.location}`;
-
-                        return (
-                          <div
-                            key={`${skillIdentity}-${index}`}
-                            className="rounded-[18px] border border-gray-800 bg-[#0b0f19] p-4 text-sm text-gray-200"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <div className="font-medium text-gray-100">{skill.name}</div>
-                                <div className="mt-1 text-xs text-gray-500">{skill.description}</div>
-                                <div className="mt-2 text-[11px] text-gray-600">{skill.location}</div>
+                      ) : (
+                        skillsSettings.managed.map((skill, index) => {
+                          const skillIdentity = `${skill.name}-${skill.location}`;
+                          return (
+                            <div
+                              key={`${skillIdentity}-${index}`}
+                              className="flex items-center gap-4 rounded-2xl bg-gray-900/60 px-4 py-3.5 transition-colors hover:bg-gray-900"
+                            >
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gray-800">
+                                <Sparkles size={16} className="text-indigo-400" />
                               </div>
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  className="h-4 w-4 rounded border-gray-600 bg-gray-900 text-blue-500"
-                                  checked={skill.enabled}
-                                  onChange={(event: ChangeEvent<HTMLInputElement>) => {
-                                    const nextManaged = [...skillsSettings.managed];
-                                    nextManaged[index] = { ...skill, enabled: event.target.checked };
-                                    onSkillsSettingsChange({ ...skillsSettings, managed: nextManaged });
-                                  }}
-                                />
+                              <div className="flex-1 min-w-0">
+                                <div className="font-medium text-gray-100 truncate">{skill.name}</div>
+                                <div className="mt-0.5 text-xs text-gray-500 truncate">{skill.description}</div>
+                              </div>
+                              <div className="flex items-center gap-3 shrink-0">
                                 <button
                                   type="button"
-                                  className="rounded-lg border border-gray-700 p-2 text-gray-400 hover:bg-gray-800 hover:text-gray-100"
-                                  onClick={() => onSkillsSettingsChange({ ...skillsSettings, managed: skillsSettings.managed.filter((_, itemIndex) => itemIndex !== index) })}
+                                  role="switch"
+                                  aria-checked={skill.enabled}
+                                  onClick={() => {
+                                    const nextManaged = [...skillsSettings.managed];
+                                    nextManaged[index] = { ...skill, enabled: !skill.enabled };
+                                    onSkillsSettingsChange({ ...skillsSettings, managed: nextManaged });
+                                  }}
+                                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors duration-200 ${skill.enabled ? "bg-blue-600" : "bg-gray-700"
+                                    }`}
+                                >
+                                  <span className={`inline-block h-3 w-3 transform rounded-full bg-white shadow transition-transform duration-200 ${skill.enabled ? "translate-x-4" : "translate-x-0"
+                                    }`} />
+                                </button>
+                                <button
+                                  type="button"
+                                  className="rounded-lg p-1.5 text-gray-600 hover:bg-gray-800 hover:text-red-400 transition-colors"
+                                  onClick={() => onSkillsSettingsChange({ ...skillsSettings, managed: skillsSettings.managed.filter((_, i) => i !== index) })}
                                   aria-label={modalCopy.removeLabel(skill.name)}
                                 >
                                   <Trash2 size={14} />
                                 </button>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })}
-                    </div>
+                          );
+                        })
+                      )}
 
-                    <div className="rounded-[18px] border border-dashed border-gray-800 bg-[#0b0f19] p-4">
-                      <div className="grid gap-3 sm:grid-cols-2">
-                        <Input value={newSkillName} onChange={(event: ChangeEvent<HTMLInputElement>) => setNewSkillName(event.target.value)} placeholder={modalCopy.skillNamePlaceholder} className="rounded-xl border-gray-700 bg-[#121826]" />
-                        <Input value={newSkillDescription} onChange={(event: ChangeEvent<HTMLInputElement>) => setNewSkillDescription(event.target.value)} placeholder={modalCopy.skillDescriptionPlaceholder} className="rounded-xl border-gray-700 bg-[#121826]" />
-                      </div>
-                      <Textarea value={newSkillContent} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setNewSkillContent(event.target.value)} placeholder={modalCopy.skillContentPlaceholder} className="mt-3 rounded-xl border-gray-700 bg-[#121826]" />
-                      <div className="mt-3 flex items-center justify-between gap-3">
-                        <p className="text-xs leading-5 text-gray-500">{modalCopy.skillsPathHint}</p>
-                        <Button
-                          type="button"
-                          className="rounded-xl bg-gray-100 px-4 text-gray-900 hover:bg-white"
-                          onClick={() => {
-                            const name = newSkillName.trim();
-                            const description = newSkillDescription.trim();
-                            const content = newSkillContent.trim();
-                            if (!name || !description || !content) {
-                              return;
-                            }
-
-                            onSkillsSettingsChange({
-                              ...skillsSettings,
-                              managed: [...skillsSettings.managed, {
-                                name,
-                                description,
-                                content,
-                                enabled: true,
-                                managed: true,
-                                location: `~/.pillow-council/skills/${name}/SKILL.md`
-                              }]
-                            });
-                            setNewSkillName("");
-                            setNewSkillDescription("");
-                            setNewSkillContent("");
-                          }}
-                        >
-                          <Plus size={16} className="mr-1" />
-                          {modalCopy.addSkill}
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="rounded-[18px] border border-gray-800 bg-gray-950/60 p-4 text-xs leading-5 text-gray-500">
-                      {modalCopy.skillsInfo(skillsSettings.available.length, skillsSettings.managed.length)}
-                    </div>
-
-                    <div className="space-y-2 rounded-[18px] border border-gray-800 bg-gray-950/60 p-4">
-                      <div className="text-xs font-medium uppercase tracking-wide text-gray-500">{modalCopy.detectedSkillsList}</div>
-                      {skillsSettings.available.map((skill, index) => {
-                        const skillIdentity = `${skill.name}-${skill.location}`;
-
-                        return (
-                          <div
-                            key={`${skillIdentity}-${index}`}
-                            className="rounded-xl border border-gray-800 bg-[#0b0f19] px-3 py-2 text-sm text-gray-200"
-                          >
-                            <div className="font-medium text-gray-100">{skill.name}</div>
-                            <div className="text-xs text-gray-500">{skill.description}</div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    <div className="space-y-2 pt-1">
                       <button
                         type="button"
-                        className={`flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3.5 font-medium transition-all duration-200 ${isSavingSkillsSettings ? "bg-gray-700 text-gray-300" : "bg-blue-600 text-white hover:bg-blue-700"}`}
+                        onClick={() => setIsAddSkillOpen(true)}
+                        className="mt-1 flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-gray-800 py-3 text-sm font-medium text-gray-600 transition-colors hover:border-gray-600 hover:text-gray-300"
+                      >
+                        <Plus size={15} />
+                        {modalCopy.addSkill}
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {/* 서브탭: 탐색 */}
+                  {skillSubTab === "explore" ? (
+                    <div className="space-y-2">
+                      {defaultInstallCatalog.skills.map((skill) => {
+                        const isInstalled = skillsSettings.managed.some((s) => s.name === skill.name);
+                        return (
+                          <div
+                            key={skill.id}
+                            className="flex items-center gap-4 rounded-2xl bg-gray-900/60 px-4 py-3.5 transition-colors hover:bg-gray-900"
+                          >
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gray-800">
+                              <Sparkles size={16} className="text-violet-400" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-gray-100">{skill.name}</div>
+                              <div className="mt-0.5 text-xs text-gray-500 leading-4">{skill.description}</div>
+                              <div className="mt-1 text-[10px] text-violet-400/70">{skill.sourceLabel}</div>
+                            </div>
+                            {isInstalled ? (
+                              <span className="shrink-0 rounded-full bg-green-500/10 px-2.5 py-1 text-xs font-medium text-green-400">
+                                {uiLocale === "ja" ? "設置済" : uiLocale === "ko" ? "설치됨" : "Installed"}
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={installingDefaultId === skill.id}
+                                onClick={() => onInstallDefaultSkill(skill.id)}
+                                className="shrink-0 flex items-center gap-1.5 rounded-xl bg-violet-600/15 px-3 py-1.5 text-xs font-semibold text-violet-400 transition-colors hover:bg-violet-600/25 disabled:opacity-50"
+                              >
+                                {installingDefaultId === skill.id
+                                  ? <span className="h-3 w-3 animate-spin rounded-full border border-violet-400/50 border-t-violet-400" />
+                                  : <Download size={12} />}
+                                {uiLocale === "ja" ? "インストール" : uiLocale === "ko" ? "설치" : "Install"}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+
+                  {/* Sticky 저장바 */}
+                  <div className="mt-auto pt-5">
+                    <div className="flex items-center justify-between rounded-2xl bg-gray-900/80 px-4 py-3">
+                      <p className="text-xs text-gray-500">{modalCopy.mcpSaveHint}</p>
+                      <button
+                        type="button"
+                        className={`flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold transition-all duration-200 ${isSavingSkillsSettings ? "bg-gray-700 text-gray-400" : "bg-blue-600 text-white hover:bg-blue-500"
+                          }`}
                         onClick={onSaveSkillsSettings}
                         disabled={isSavingSkillsSettings}
                       >
-                        {isSavingSkillsSettings ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/30 border-t-white" /> : modalCopy.saveSkills}
+                        {isSavingSkillsSettings
+                          ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                          : null}
+                        {modalCopy.saveSkills}
                       </button>
-                      <p className="text-xs leading-5 text-gray-500">{modalCopy.skillsSaveHint}</p>
                     </div>
                   </div>
-                </section>
-              </div>
-            ) : null}
+                </div>
+              ) : null}
 
-            {settingsTab === "preset" ? (
-              <div className="max-w-2xl animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <section className="relative">
-                  <div className="relative">
-                    {isPresetTabLocked ? (
-                      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-2xl border border-gray-800/50 bg-[#0b0f19]/70 backdrop-blur-[2px] transition-all duration-500">
-                        <div className="mb-4 rounded-full bg-gray-800 p-3 text-gray-400 shadow-lg"><Lock size={20} /></div>
-                        <p className="mb-4 max-w-sm text-center text-base font-medium text-gray-300">{presetGenerationBlockedMessage}</p>
-                        <button type="button" onClick={() => onSwitchTab("connection")} className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-blue-900/20 transition-colors hover:bg-blue-700">
-                          {modalCopy.moveToConnection}
-                        </button>
-                      </div>
-                    ) : null}
-
-                    <div className={`space-y-4 rounded-2xl border border-gray-800 bg-[#121826] p-5 transition-all duration-500 ${isPresetTabLocked ? "pointer-events-none opacity-30" : "opacity-100"}`}>
-                      <div className="rounded-2xl border border-gray-800/80 bg-[#0b0f19] p-5">
-                        <h4 className="mb-1 font-medium text-gray-200">{modalCopy.generationContext}</h4>
-                        <p className="mb-5 text-sm text-gray-500">{modalCopy.generationContextDescription}</p>
-                        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
-                          <div>
-                            <label className="mb-2 block text-sm font-medium text-gray-400">{modalCopy.sessionModel}</label>
-                            <div className="relative mb-2">
-                              <Select className="w-full appearance-none rounded-xl border border-gray-700 bg-[#121826] px-4 py-3.5 text-white transition-colors focus:border-blue-500 focus:outline-none" value={form.model} disabled={!sessionProvider || sessionModelOptions.length === 0} onChange={(event: ChangeEvent<HTMLSelectElement>) => onFormChange({ model: event.target.value })}>
-                                {sessionModelOptions.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
-                              </Select>
-                              <ChevronDown size={18} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-500" />
-                            </div>
-                            <p className="text-xs text-gray-600">{getStructuredOutputReadyLabel(uiLocale)}</p>
-                          </div>
-                          <div>
-                            <label className="mb-2 block text-sm font-medium text-gray-400">{modalCopy.sessionLanguage}</label>
-                            <div className="relative mb-2">
-                              <Select className="w-full appearance-none rounded-xl border border-gray-700 bg-[#121826] px-4 py-3.5 text-white transition-colors focus:border-blue-500 focus:outline-none" value={form.language} onChange={(event: ChangeEvent<HTMLSelectElement>) => onFormChange({ language: event.target.value as SessionLanguage })}>
-                                {sessionLanguageOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                              </Select>
-                              <ChevronDown size={18} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-500" />
-                            </div>
-                            <p className="text-xs text-gray-600">{modalCopy.languageOutputHint(form.language)}</p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="rounded-2xl border border-gray-800/80 bg-[#0b0f19] p-5">
-                        <div className="mb-1 flex items-start justify-between">
-                          <h4 className="font-medium text-gray-200">{modalCopy.customPresetGeneration}</h4>
-                          <div className="rounded-full border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs text-gray-300">{generatedPresetAgentCount} {modalCopy.agentCount}</div>
-                        </div>
-                        <p className="mb-5 text-sm text-gray-500">{modalCopy.customPresetDescription}</p>
-                        <div className="mb-6">
-                          <label className="mb-2 block text-sm font-medium text-gray-400">{modalCopy.presetPromptLabel}</label>
-                          <Textarea className="rounded-xl border-gray-700 bg-[#121826]" value={generatedPresetPrompt} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => onGeneratedPresetPromptChange(event.target.value)} placeholder={modalCopy.presetPromptPlaceholder} />
-                        </div>
-                        <div className="flex flex-col items-end gap-4 sm:flex-row">
-                          <div className="w-full sm:w-auto">
-                            <label className="mb-2 block text-sm font-medium text-gray-400">{modalCopy.agentCount}</label>
-                            <div className="flex gap-2">
-                              {[GENERATED_PRESET_AGENT_COUNT_MIN, 3, 5].map((num) => (
-                                <button key={num} type="button" onClick={() => onGeneratedPresetAgentCountChange(clampAgentCount(num))} className={`rounded-xl px-5 py-3.5 text-sm font-medium transition-colors ${generatedPresetAgentCount === num ? "border border-gray-600 bg-gray-700 text-white" : "border border-gray-800 bg-[#121826] text-gray-400 hover:bg-gray-800"}`}>
-                                  {num} {modalCopy.agentCount}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                          <button type="button" onClick={onGeneratePreset} disabled={isGeneratingPreset || presetGenerationBlockedReason !== null} className={`flex w-full flex-1 items-center justify-center gap-2 rounded-xl py-3.5 font-semibold transition-all duration-300 enabled:active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-gray-800 disabled:text-gray-500 sm:text-base ${isPresetGenerationSuccess ? "bg-green-600 text-white hover:bg-green-500" : "bg-white text-gray-900 hover:bg-gray-100"}`}>
-                            {isGeneratingPreset ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-gray-900/30 border-t-gray-900" /> : isPresetGenerationSuccess ? <><CheckCircle2 size={20} /> {modalCopy.generatedPresetDone}</> : <><Sparkles size={20} /> {modalCopy.generateWithAi}</>}
+              {settingsTab === "preset" ? (
+                <div className="max-w-2xl animate-in fade-in slide-in-from-bottom-2 duration-300">
+                  <section className="relative">
+                    <div className="relative">
+                      {isPresetTabLocked ? (
+                        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center rounded-2xl border border-gray-800/50 bg-[#0b0f19]/70 backdrop-blur-[2px] transition-all duration-500">
+                          <div className="mb-4 rounded-full bg-gray-800 p-3 text-gray-400 shadow-lg"><Lock size={20} /></div>
+                          <p className="mb-4 max-w-sm text-center text-base font-medium text-gray-300">{presetGenerationBlockedMessage}</p>
+                          <button type="button" onClick={() => onSwitchTab("connection")} className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-medium text-white shadow-lg shadow-blue-900/20 transition-colors hover:bg-blue-700">
+                            {modalCopy.moveToConnection}
                           </button>
                         </div>
-                        <p className="mt-4 text-center text-xs text-gray-600 sm:text-left">{presetGenerationBlockedMessage}</p>
+                      ) : null}
+
+                      <div className={`space-y-4 rounded-2xl border border-gray-800 bg-[#121826] p-5 transition-all duration-500 ${isPresetTabLocked ? "pointer-events-none opacity-30" : "opacity-100"}`}>
+                        <div className="rounded-2xl border border-gray-800/80 bg-[#0b0f19] p-5">
+                          <h4 className="mb-1 font-medium text-gray-200">{modalCopy.generationContext}</h4>
+                          <p className="mb-5 text-sm text-gray-500">{modalCopy.generationContextDescription}</p>
+                          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+                            <div>
+                              <label className="mb-2 block text-sm font-medium text-gray-400">{modalCopy.sessionModel}</label>
+                              <div className="relative mb-2">
+                                <Select className="w-full appearance-none rounded-xl border border-gray-700 bg-[#121826] px-4 py-3.5 text-white transition-colors focus:border-blue-500 focus:outline-none" value={form.model} disabled={!sessionProvider || sessionModelOptions.length === 0} onChange={(event: ChangeEvent<HTMLSelectElement>) => onFormChange({ model: event.target.value })}>
+                                  {sessionModelOptions.map((model) => <option key={model.id} value={model.id}>{model.label}</option>)}
+                                </Select>
+                                <ChevronDown size={18} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-500" />
+                              </div>
+                              <p className="text-xs text-gray-600">{getStructuredOutputReadyLabel(uiLocale)}</p>
+                            </div>
+                            <div>
+                              <label className="mb-2 block text-sm font-medium text-gray-400">{modalCopy.sessionLanguage}</label>
+                              <div className="relative mb-2">
+                                <Select className="w-full appearance-none rounded-xl border border-gray-700 bg-[#121826] px-4 py-3.5 text-white transition-colors focus:border-blue-500 focus:outline-none" value={form.language} onChange={(event: ChangeEvent<HTMLSelectElement>) => onFormChange({ language: event.target.value as SessionLanguage })}>
+                                  {sessionLanguageOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                </Select>
+                                <ChevronDown size={18} className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-gray-500" />
+                              </div>
+                              <p className="text-xs text-gray-600">{modalCopy.languageOutputHint(form.language)}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-gray-800/80 bg-[#0b0f19] p-5">
+                          <div className="mb-1 flex items-start justify-between">
+                            <h4 className="font-medium text-gray-200">{modalCopy.customPresetGeneration}</h4>
+                            <div className="rounded-full border border-gray-700 bg-gray-800 px-3 py-1.5 text-xs text-gray-300">{generatedPresetAgentCount} {modalCopy.agentCount}</div>
+                          </div>
+                          <p className="mb-5 text-sm text-gray-500">{modalCopy.customPresetDescription}</p>
+                          <div className="mb-6">
+                            <label className="mb-2 block text-sm font-medium text-gray-400">{modalCopy.presetPromptLabel}</label>
+                            <Textarea className="rounded-xl border-gray-700 bg-[#121826]" value={generatedPresetPrompt} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => onGeneratedPresetPromptChange(event.target.value)} placeholder={modalCopy.presetPromptPlaceholder} />
+                          </div>
+                          <div className="flex flex-col items-end gap-4 sm:flex-row">
+                            <div className="w-full sm:w-auto">
+                              <label className="mb-2 block text-sm font-medium text-gray-400">{modalCopy.agentCount}</label>
+                              <div className="flex gap-2">
+                                {[GENERATED_PRESET_AGENT_COUNT_MIN, 3, 5].map((num) => (
+                                  <button key={num} type="button" onClick={() => onGeneratedPresetAgentCountChange(clampAgentCount(num))} className={`rounded-xl px-5 py-3.5 text-sm font-medium transition-colors ${generatedPresetAgentCount === num ? "border border-gray-600 bg-gray-700 text-white" : "border border-gray-800 bg-[#121826] text-gray-400 hover:bg-gray-800"}`}>
+                                    {num} {modalCopy.agentCount}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            <button type="button" onClick={onGeneratePreset} disabled={isGeneratingPreset || presetGenerationBlockedReason !== null} className={`flex w-full flex-1 items-center justify-center gap-2 rounded-xl py-3.5 font-semibold transition-all duration-300 enabled:active:scale-[0.99] disabled:cursor-not-allowed disabled:bg-gray-800 disabled:text-gray-500 sm:text-base ${isPresetGenerationSuccess ? "bg-green-600 text-white hover:bg-green-500" : "bg-white text-gray-900 hover:bg-gray-100"}`}>
+                              {isGeneratingPreset ? <span className="h-5 w-5 animate-spin rounded-full border-2 border-gray-900/30 border-t-gray-900" /> : isPresetGenerationSuccess ? <><CheckCircle2 size={20} /> {modalCopy.generatedPresetDone}</> : <><Sparkles size={20} /> {modalCopy.generateWithAi}</>}
+                            </button>
+                          </div>
+                          <p className="mt-4 text-center text-xs text-gray-600 sm:text-left">{presetGenerationBlockedMessage}</p>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </section>
-              </div>
-            ) : null}
-          </div>
+                  </section>
+                </div>
+              ) : null}
+            </div >
 
-          <div className="flex justify-end gap-3 border-t border-gray-800 bg-[#090d1a] px-6 py-4">
-            {shouldReturnToSession ? (
-              <Button variant="secondary" className="bg-gray-800 text-white hover:bg-gray-700" onClick={onReturnToSession}>
-                {getReturnToSessionLabel(uiLocale)}
+            <div className="flex justify-end gap-3 border-t border-gray-800 bg-[#090d1a] px-6 py-4">
+              {shouldReturnToSession ? (
+                <Button variant="secondary" className="bg-gray-800 text-white hover:bg-gray-700" onClick={onReturnToSession}>
+                  {getReturnToSessionLabel(uiLocale)}
+                </Button>
+              ) : null}
+              <Button variant="secondary" className="bg-gray-800 text-white hover:bg-gray-700" onClick={onClose}>
+                {getCloseLabel(uiLocale)}
               </Button>
-            ) : null}
-            <Button variant="secondary" className="bg-gray-800 text-white hover:bg-gray-700" onClick={onClose}>
-              {getCloseLabel(uiLocale)}
-            </Button>
+            </div>
+          </div >
+        </div >
+      </div >
+
+      {/* MCP 추가 팝업 */}
+      {
+        isAddMcpOpen ? (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm animate-in fade-in duration-150">
+            <div className="w-full max-w-lg rounded-[20px] border border-gray-700 bg-[#0f1623] shadow-2xl animate-in zoom-in-95 duration-150">
+              <div className="flex items-center justify-between border-b border-gray-800 px-6 py-4">
+                <h3 className="text-base font-semibold text-white">{modalCopy.addMcp}</h3>
+                <button type="button" onClick={() => { setIsAddMcpOpen(false); setNewMcpName(""); setNewMcpTarget(""); }} className="rounded-full p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white">
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="space-y-4 p-6">
+                <div className="grid gap-3 sm:grid-cols-[1fr_136px]">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-gray-400">{uiLocale === "ja" ? "サーバー名" : uiLocale === "ko" ? "서버 이름" : "Server name"}</label>
+                    <Input value={newMcpName} onChange={(event: ChangeEvent<HTMLInputElement>) => setNewMcpName(event.target.value)} placeholder={modalCopy.serverNamePlaceholder} className="rounded-xl border-gray-700 bg-[#121826]" />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-gray-400">{uiLocale === "ja" ? "タイプ" : uiLocale === "ko" ? "타입" : "Type"}</label>
+                    <div className="relative">
+                      <Select value={newMcpType} onChange={(event: ChangeEvent<HTMLSelectElement>) => setNewMcpType(event.target.value as "local" | "remote")} className="rounded-xl border-gray-700 bg-[#121826]">
+                        <option value="local">{modalCopy.localOption}</option>
+                        <option value="remote">{modalCopy.remoteOption}</option>
+                      </Select>
+                      <ChevronDown size={16} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-gray-400">{newMcpType === "local" ? (uiLocale === "ja" ? "コマンド" : uiLocale === "ko" ? "실행 명령어" : "Command") : "URL"}</label>
+                  <Input value={newMcpTarget} onChange={(event: ChangeEvent<HTMLInputElement>) => setNewMcpTarget(event.target.value)} placeholder={newMcpType === "local" ? "npx -y @modelcontextprotocol/server-github" : "https://mcp.example.com"} className="rounded-xl border-gray-700 bg-[#121826]" />
+                  <p className="mt-2 text-xs leading-5 text-gray-500">{modalCopy.localMcpHint}</p>
+                </div>
+                <div className="flex justify-end gap-3 pt-1">
+                  <Button type="button" variant="ghost" onClick={() => { setIsAddMcpOpen(false); setNewMcpName(""); setNewMcpTarget(""); }} className="rounded-xl border border-gray-700 px-4 text-gray-300 hover:bg-gray-800">
+                    {uiLocale === "ja" ? "キャンセル" : uiLocale === "ko" ? "취소" : "Cancel"}
+                  </Button>
+                  <Button
+                    type="button"
+                    className="rounded-xl bg-blue-600 px-5 text-white hover:bg-blue-500"
+                    onClick={() => {
+                      const name = newMcpName.trim();
+                      const target = newMcpTarget.trim();
+                      if (!name || !target) return;
+                      const nextServer = newMcpType === "local"
+                        ? { name, enabled: true, type: "local" as const, command: target.split(/\s+/).filter(Boolean), resourceCount: 0 }
+                        : { name, enabled: true, type: "remote" as const, url: target, resourceCount: 0 };
+                      onMcpSettingsChange({ ...mcpSettings, servers: [...mcpSettings.servers, nextServer] });
+                      setNewMcpName("");
+                      setNewMcpTarget("");
+                      setIsAddMcpOpen(false);
+                    }}
+                  >
+                    <Plus size={15} className="mr-1" />
+                    {modalCopy.addMcp}
+                  </Button>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
-    </div>
+        ) : null
+      }
+
+      {/* 스킬 추가 팝업 */}
+      {
+        isAddSkillOpen ? (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm animate-in fade-in duration-150">
+            <div className="w-full max-w-lg rounded-[20px] border border-gray-700 bg-[#0f1623] shadow-2xl animate-in zoom-in-95 duration-150">
+              <div className="flex items-center justify-between border-b border-gray-800 px-6 py-4">
+                <h3 className="text-base font-semibold text-white">{modalCopy.addSkill}</h3>
+                <button type="button" onClick={() => { setIsAddSkillOpen(false); setNewSkillName(""); setNewSkillDescription(""); setNewSkillContent(""); }} className="rounded-full p-1.5 text-gray-400 hover:bg-gray-800 hover:text-white">
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="space-y-4 p-6">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-gray-400">{uiLocale === "ja" ? "スキル名" : uiLocale === "ko" ? "스킬 이름" : "Skill name"}</label>
+                    <Input value={newSkillName} onChange={(event: ChangeEvent<HTMLInputElement>) => setNewSkillName(event.target.value)} placeholder={modalCopy.skillNamePlaceholder} className="rounded-xl border-gray-700 bg-[#121826]" />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-gray-400">{uiLocale === "ja" ? "説明" : uiLocale === "ko" ? "설명" : "Description"}</label>
+                    <Input value={newSkillDescription} onChange={(event: ChangeEvent<HTMLInputElement>) => setNewSkillDescription(event.target.value)} placeholder={modalCopy.skillDescriptionPlaceholder} className="rounded-xl border-gray-700 bg-[#121826]" />
+                  </div>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-gray-400">{uiLocale === "ja" ? "コンテンツ" : uiLocale === "ko" ? "내용" : "Content"}</label>
+                  <Textarea value={newSkillContent} onChange={(event: ChangeEvent<HTMLTextAreaElement>) => setNewSkillContent(event.target.value)} placeholder={modalCopy.skillContentPlaceholder} rows={6} className="rounded-xl border-gray-700 bg-[#121826]" />
+                  <p className="mt-2 text-xs leading-5 text-gray-500">{modalCopy.skillsPathHint}</p>
+                </div>
+                <div className="flex justify-end gap-3 pt-1">
+                  <Button type="button" variant="ghost" onClick={() => { setIsAddSkillOpen(false); setNewSkillName(""); setNewSkillDescription(""); setNewSkillContent(""); }} className="rounded-xl border border-gray-700 px-4 text-gray-300 hover:bg-gray-800">
+                    {uiLocale === "ja" ? "キャンセル" : uiLocale === "ko" ? "취소" : "Cancel"}
+                  </Button>
+                  <Button
+                    type="button"
+                    className="rounded-xl bg-blue-600 px-5 text-white hover:bg-blue-500"
+                    onClick={() => {
+                      const name = newSkillName.trim();
+                      const description = newSkillDescription.trim();
+                      const content = newSkillContent.trim();
+                      if (!name || !description || !content) return;
+                      onSkillsSettingsChange({
+                        ...skillsSettings,
+                        managed: [...skillsSettings.managed, {
+                          name,
+                          description,
+                          content,
+                          enabled: true,
+                          managed: true,
+                          location: `~/.pillow-council/skills/${name}/SKILL.md`
+                        }]
+                      });
+                      setNewSkillName("");
+                      setNewSkillDescription("");
+                      setNewSkillContent("");
+                      setIsAddSkillOpen(false);
+                    }}
+                  >
+                    <Plus size={15} className="mr-1" />
+                    {modalCopy.addSkill}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null
+      }
+    </>
   );
 };
 

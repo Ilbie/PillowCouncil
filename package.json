@@ -1,6 +1,6 @@
 {
   "name": "pillow-council",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "private": false,
   "description": "CLI for running PillowCouncil's multi-agent decision board locally.",
   "license": "Apache-2.0",

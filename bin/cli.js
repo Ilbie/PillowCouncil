@@ -25,23 +25,23 @@ function resolveStandaloneServerPath() {
   return candidateServerPaths().find((candidate) => fs.existsSync(candidate)) ?? null;
 }
 
-function runBuild(packageRoot) {
+function runNpmCommand(args, cwd) {
   return new Promise((resolve, reject) => {
-    console.log("⚙️  PillowCouncil standalone server not found. Running build (this may take a few minutes)...");
-    const build = spawn(
-      process.platform === "win32" ? "npm.cmd" : "npm",
-      ["run", "build"],
-      { cwd: packageRoot, stdio: "inherit", shell: true }
-    );
-    build.once("exit", (code) => {
-      if (code === 0) {
-        resolve();
-      } else {
-        reject(new Error(`Build failed with exit code ${code}.`));
-      }
+    const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+    const child = spawn(npm, args, { cwd, stdio: "inherit", shell: true });
+    child.once("exit", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`npm ${args.join(" ")} failed with exit code ${code}.`));
     });
-    build.once("error", reject);
+    child.once("error", reject);
   });
+}
+
+async function runBuild(packageRoot) {
+  console.log("⚙️  PillowCouncil standalone server not found. Installing dependencies...");
+  await runNpmCommand(["install"], packageRoot);
+  console.log("⚙️  Building PillowCouncil (this may take a few minutes)...");
+  await runNpmCommand(["run", "build"], packageRoot);
 }
 
 async function ensureStandaloneServerPath() {
