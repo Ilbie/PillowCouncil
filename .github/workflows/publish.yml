@@ -32,6 +32,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build standalone server
+        run: npm run build
+
+      - name: Package standalone build
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          tar -czf pillow-council-standalone-v${VERSION}.tar.gz \
+            -C apps/web/.next/standalone .
+          echo "ASSET_NAME=pillow-council-standalone-v${VERSION}.tar.gz" >> $GITHUB_ENV
+
       - name: Verify tag matches package version
         run: |
           VERSION=${GITHUB_REF_NAME#v}
@@ -50,13 +60,14 @@ jobs:
           generate_release_notes: true
           draft: false
           prerelease: false
+          files: ${{ env.ASSET_NAME }}
 
       - name: Publish to npm
         run: |
           if [ -n "${NPM_TOKEN:-}" ]; then
-            NODE_AUTH_TOKEN="$NPM_TOKEN" npm publish --provenance --access public
+            NODE_AUTH_TOKEN="$NPM_TOKEN" npm publish --ignore-scripts --provenance --access public
           else
-            npm publish --provenance --access public
+            npm publish --ignore-scripts --provenance --access public
           fi
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
