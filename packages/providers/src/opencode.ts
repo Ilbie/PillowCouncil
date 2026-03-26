@@ -26,12 +26,42 @@ let cachedHandle: CachedOpencodeHandle | null = null;
 let factory: (() => Promise<OpencodeHandle>) | null = null;
 let handleMutationLock: Promise<void> = Promise.resolve();
 
-function getPackageJsonResolver(): (request: string) => string {
+type PackageJsonResolver = (request: string) => string;
+type RequireLike = {
+  resolve(request: string): string;
+};
+
+type RequireFactory = (filename: string) => RequireLike;
+type RequireFactoryGetter = () => RequireFactory;
+
+function getDefaultRequireFactory(): RequireFactory {
+  const processWithBuiltinModule = process as NodeJS.Process & {
+    getBuiltinModule?: (id: string) => { createRequire?: RequireFactory } | undefined;
+  };
+
+  const moduleBuiltin = processWithBuiltinModule.getBuiltinModule?.("module");
+  if (moduleBuiltin?.createRequire) {
+    return moduleBuiltin.createRequire.bind(moduleBuiltin);
+  }
+
+  return createRequire;
+}
+
+export function createPackageJsonResolverForTests(
+  entryFile: string,
+  requireFactory?: RequireFactory,
+  getRequireFactory: RequireFactoryGetter = getDefaultRequireFactory
+): PackageJsonResolver {
+  const runtimeRequire = (requireFactory ?? getRequireFactory())(entryFile);
+  return (request: string) => runtimeRequire.resolve(request);
+}
+
+function getPackageJsonResolver(): PackageJsonResolver {
   const entryFile = process.argv[1] && path.isAbsolute(process.argv[1])
     ? process.argv[1]
     : path.join(process.cwd(), "package.json");
 
-  return createRequire(entryFile).resolve;
+  return createPackageJsonResolverForTests(entryFile);
 }
 
 function getDefaultDataHomeRoot(env: NodeJS.ProcessEnv = process.env): string {

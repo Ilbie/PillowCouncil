@@ -56,6 +56,7 @@ export const sessionRuns = sqliteTable("session_runs", {
   webSearches: integer("web_searches").notNull().default(0),
   totalPromptTokens: integer("total_prompt_tokens").notNull().default(0),
   totalCompletionTokens: integer("total_completion_tokens").notNull().default(0),
+  activeWorkDurationMs: integer("active_work_duration_ms").notNull().default(0),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull()
 });

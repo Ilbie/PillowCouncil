@@ -292,6 +292,7 @@ export type SessionRunRecord = {
   webSearches: number;
   totalPromptTokens: number;
   totalCompletionTokens: number;
+  activeWorkDurationMs: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -521,13 +522,15 @@ export function calculateSessionActivityMetrics(input: {
   usage: UsageSummary;
   currentTime?: string;
 }): SessionActivityMetrics {
-  const endTimestamp = input.run?.completedAt ?? input.currentTime ?? input.run?.updatedAt ?? null;
-  const startTimestamp = input.run?.startedAt ?? input.run?.createdAt ?? null;
+  const accumulatedDurationMs = input.run?.activeWorkDurationMs ?? 0;
+  const endTimestamp = input.currentTime ?? input.run?.updatedAt ?? null;
+  const startTimestamp = input.run?.status === "running" ? input.run.startedAt : null;
   const startedAtMs = startTimestamp ? Date.parse(startTimestamp) : Number.NaN;
   const endedAtMs = endTimestamp ? Date.parse(endTimestamp) : Number.NaN;
-  const workDurationMs = Number.isFinite(startedAtMs) && Number.isFinite(endedAtMs)
+  const activeSegmentDurationMs = Number.isFinite(startedAtMs) && Number.isFinite(endedAtMs)
     ? Math.max(0, endedAtMs - startedAtMs)
     : 0;
+  const workDurationMs = accumulatedDurationMs + activeSegmentDurationMs;
 
   return {
     mcpCalls: input.run?.mcpCalls ?? 0,

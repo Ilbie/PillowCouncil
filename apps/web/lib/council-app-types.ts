@@ -1,5 +1,5 @@
 import type { LiveMessageRecord, PresetDefinition, SessionCreateInput, SessionLanguage, SessionListResponse } from "@pillow-council/shared";
-import type { McpSettingsState, SkillsSettingsState } from "@pillow-council/providers";
+import type { DefaultInstallCatalog, McpSettingsState, SkillsSettingsState } from "@pillow-council/providers";
 
 import type { ProviderOauthPendingState } from "@/lib/provider-auth";
 
@@ -12,6 +12,7 @@ export type SettingsTab = "connection" | "mcp" | "skills" | "preset";
 
 export type McpSettingsDraft = McpSettingsState;
 export type SkillsSettingsDraft = SkillsSettingsState;
+export type DefaultInstallCatalogDraft = DefaultInstallCatalog;
 
 export type GeneratedPresetInputs = {
   prompt: string;

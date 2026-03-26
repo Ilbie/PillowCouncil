@@ -10,6 +10,7 @@ import {
   nowIso,
   prependRebuttalTargetHeader,
   type DebateState,
+  type ModeratorSummary,
   type LiveMessageRecord,
   type MemorySearchResult,
   type RebuttalTargetMetadata,
@@ -18,6 +19,7 @@ import {
   type MessageRecord,
   type PresetDefinition,
   type SessionRecord,
+  type SessionDetailResponse,
   type UsageSummary
 } from "@pillow-council/shared";
 
@@ -32,6 +34,7 @@ import {
   formatSpeakerRoutingPrompt,
   getLocalizedInterventionMessage,
   getLanguageInstruction,
+  STRUCTURED_REASON_MAX_CHARS,
   getThinkingIntensityInstruction,
   renderMessages,
 } from "./prompts";
@@ -39,6 +42,182 @@ import { createMessage, createRound } from "./engine/factories";
 import { loadRetrievedMemories } from "./engine/memory-loader";
 import { persistMessage } from "./engine/message-persistence";
 import type { ContextState, OrchestratedRound, RunActivityGuard, RunSessionCallbacks, RunSessionResult } from "./engine/types";
+
+const CONTEXT_RECENT_MESSAGE_COUNT = 8;
+
+type ResumeStage = "opening" | "rebuttal" | "summary" | "final" | "done";
+
+type ResumeState = {
+  existingRounds: OrchestratedRound[];
+  usage: UsageSummary;
+  contextState: ContextState;
+  nextRoundNumber: number;
+  nextCycleNumber: number;
+  nextStage: ResumeStage;
+  pendingOpinionRound: OrchestratedRound | null;
+  moderatorSummary: ModeratorSummary | null;
+  persistedDecision: DecisionSummary | null;
+};
+
+function parseCycleNumber(title: string, fallback: number): number {
+  const match = title.match(/(\d+)/);
+  return match ? Number(match[1]) : fallback;
+}
+
+function parseSummaryList(lines: string[], heading: string): string[] {
+  const headingIndex = lines.findIndex((line) => line.trim() === heading);
+  if (headingIndex === -1) {
+    return [];
+  }
+
+  const values: string[] = [];
+  for (let index = headingIndex + 1; index < lines.length; index += 1) {
+    const line = lines[index].trim();
+    if (!line) {
+      break;
+    }
+    if (line.startsWith("- ")) {
+      values.push(line.slice(2).trim());
+    }
+  }
+
+  return values;
+}
+
+function parseModeratorSummaryFromRound(round: OrchestratedRound | null): ModeratorSummary | null {
+  const summaryMessage = round?.messages.find((message: MessageRecord) => message.kind === "summary")?.content;
+  if (!summaryMessage || !round?.summary) {
+    return null;
+  }
+
+  const lines = summaryMessage.split("\n");
+  return {
+    keyPoints: parseSummaryList(lines, "Key Points"),
+    agreements: parseSummaryList(lines, "Agreements"),
+    disagreements: parseSummaryList(lines, "Disagreements"),
+    risks: parseSummaryList(lines, "Risks").filter((item) => item !== "No material risks recorded."),
+    summary: round.summary
+  };
+}
+
+function parseFinalDecisionFromRound(round: OrchestratedRound | null): DecisionSummary | null {
+  const finalMessage = round?.messages.find((message: MessageRecord) => message.kind === "final")?.content;
+  if (!finalMessage || !round?.summary) {
+    return null;
+  }
+
+  const lines = finalMessage.split("\n");
+  const topRecommendationIndex = lines.findIndex((line) => line.trim() === "Top Recommendation");
+
+  return {
+    topRecommendation: topRecommendationIndex === -1 ? round.summary : (lines[topRecommendationIndex + 1]?.trim() || round.summary),
+    alternatives: [],
+    risks: parseSummaryList(lines, "Risks").filter((item) => item !== "No major risks recorded."),
+    assumptions: [],
+    openQuestions: [],
+    nextActions: [],
+    finalSummary: round.summary,
+    todos: []
+  };
+}
+
+export function buildResumeStateFromDetail(input: { detail: SessionDetailResponse; recentMessageCount?: number }): ResumeState {
+  const rounds: OrchestratedRound[] = input.detail.rounds.map((round: SessionDetailResponse["rounds"][number]) => ({ ...round, messages: [...round.messages] }));
+  const messages = rounds.flatMap((round) => round.messages);
+  const recentMessages = messages.slice(-(input.recentMessageCount ?? CONTEXT_RECENT_MESSAGE_COUNT));
+  const openingRounds = rounds.filter((round: OrchestratedRound) => round.stage === "opening" && round.messages.length > 0);
+  const rebuttalRounds = rounds.filter((round: OrchestratedRound) => round.stage === "rebuttal" && round.messages.length > 0);
+  const summaryRound = rounds.find((round) => round.stage === "summary" && round.messages.length > 0) ?? null;
+  const finalRound = rounds.find((round) => round.stage === "final" && round.messages.length > 0) ?? null;
+  const lastRoundNumber = rounds.reduce((max: number, round: OrchestratedRound) => Math.max(max, round.roundNumber), 0);
+  const nextRoundNumber = lastRoundNumber + 1;
+  const completedOpeningCycles = openingRounds.reduce((max: number, round: OrchestratedRound, index: number) => Math.max(max, parseCycleNumber(round.title, index + 1)), 0);
+  const completedRebuttalCycles = rebuttalRounds.reduce((max: number, round: OrchestratedRound, index: number) => Math.max(max, parseCycleNumber(round.title, index + 1)), 0);
+  const pendingOpinionRound = openingRounds.length > 0 ? openingRounds[openingRounds.length - 1] : null;
+
+  if (finalRound) {
+    return {
+      existingRounds: rounds,
+      usage: input.detail.usage,
+      contextState: {
+        debateState: input.detail.run?.debateState ?? createEmptyDebateState(),
+        recentMessages
+      },
+      nextRoundNumber,
+      nextCycleNumber: completedOpeningCycles,
+      nextStage: "final",
+      pendingOpinionRound: null,
+      moderatorSummary: parseModeratorSummaryFromRound(summaryRound),
+      persistedDecision: parseFinalDecisionFromRound(finalRound)
+    };
+  }
+
+  if (summaryRound) {
+    return {
+      existingRounds: rounds,
+      usage: input.detail.usage,
+      contextState: {
+        debateState: input.detail.run?.debateState ?? createEmptyDebateState(),
+        recentMessages
+      },
+      nextRoundNumber,
+      nextCycleNumber: completedOpeningCycles,
+      nextStage: "final",
+      pendingOpinionRound: null,
+      moderatorSummary: parseModeratorSummaryFromRound(summaryRound),
+      persistedDecision: null
+    };
+  }
+
+  if (completedOpeningCycles >= input.detail.session.debateIntensity) {
+    return {
+      existingRounds: rounds,
+      usage: input.detail.usage,
+      contextState: {
+        debateState: input.detail.run?.debateState ?? createEmptyDebateState(),
+        recentMessages
+      },
+      nextRoundNumber,
+      nextCycleNumber: completedOpeningCycles,
+      nextStage: "summary",
+      pendingOpinionRound: null,
+      moderatorSummary: null,
+      persistedDecision: null
+    };
+  }
+
+  if (completedOpeningCycles > completedRebuttalCycles && pendingOpinionRound) {
+    return {
+      existingRounds: rounds,
+      usage: input.detail.usage,
+      contextState: {
+        debateState: input.detail.run?.debateState ?? createEmptyDebateState(),
+        recentMessages
+      },
+      nextRoundNumber,
+      nextCycleNumber: completedOpeningCycles,
+      nextStage: "rebuttal",
+      pendingOpinionRound,
+      moderatorSummary: null,
+      persistedDecision: null
+    };
+  }
+
+  return {
+    existingRounds: rounds,
+    usage: input.detail.usage,
+    contextState: {
+      debateState: input.detail.run?.debateState ?? createEmptyDebateState(),
+      recentMessages
+    },
+    nextRoundNumber,
+    nextCycleNumber: completedOpeningCycles + 1,
+    nextStage: "opening",
+    pendingOpinionRound: null,
+    moderatorSummary: null,
+    persistedDecision: null
+  };
+}
 
 const finalDecisionSchema = z.object({
   topRecommendation: z.string().min(1).max(1000),
@@ -56,17 +235,17 @@ const compiledPresetSchema = z.object({
   compiledPresetDescription: z.string().min(1).max(240),
   compiledAgents: z.array(agentDefinitionSchema).min(2).max(8)
 });
-const speakerRoutingSchema = z.object({
+export const speakerRoutingSchema = z.object({
   shouldContinue: z.boolean(),
   nextSpeakerKey: z.string().min(1).max(80).nullable(),
-  reason: z.string().min(1).max(240),
+  reason: z.string().min(1).max(STRUCTURED_REASON_MAX_CHARS),
   suggestedTargetAgentKey: z.string().min(1).max(80).nullable()
 });
-const researchPlanSchema = z.object({
+export const researchPlanSchema = z.object({
   shouldResearch: z.boolean(),
   focus: z.string().max(200),
   query: z.string().max(240),
-  reason: z.string().max(240)
+  reason: z.string().max(STRUCTURED_REASON_MAX_CHARS)
 });
 const ALIGNMENT_INTERVENTION_THRESHOLD = 6;
 
@@ -590,6 +769,7 @@ export async function runPillowCouncilSession(input: {
   session: SessionRecord;
   runId: string;
   provider: PillowCouncilProvider;
+  resumeState?: ResumeState;
   callbacks?: RunSessionCallbacks;
   assertActive?: RunActivityGuard;
   retrieveMemories?: (input: {
@@ -607,15 +787,22 @@ export async function runPillowCouncilSession(input: {
     throw new Error(`Unknown preset: ${input.session.presetId}`);
   }
 
-  const rounds: OrchestratedRound[] = [];
-  const usage: UsageSummary = {
-    totalPromptTokens: 0,
-    totalCompletionTokens: 0
-  };
-  const contextState: ContextState = {
-    debateState: createEmptyDebateState(),
-    recentMessages: []
-  };
+  const rounds: OrchestratedRound[] = input.resumeState?.existingRounds ? [...input.resumeState.existingRounds] : [];
+  const usage: UsageSummary = input.resumeState?.usage
+    ? { ...input.resumeState.usage }
+    : {
+        totalPromptTokens: 0,
+        totalCompletionTokens: 0
+      };
+  const contextState: ContextState = input.resumeState?.contextState
+    ? {
+        debateState: input.resumeState.contextState.debateState,
+        recentMessages: [...input.resumeState.contextState.recentMessages]
+      }
+    : {
+        debateState: createEmptyDebateState(),
+        recentMessages: []
+      };
 
   await input.callbacks?.onStreamEvent?.({
     type: "status",
@@ -635,9 +822,14 @@ export async function runPillowCouncilSession(input: {
     assertActive: input.assertActive
   });
 
-  let roundNumber = 1;
+  let roundNumber = input.resumeState?.nextRoundNumber ?? 1;
+  let nextStage: ResumeStage = input.resumeState?.nextStage ?? "opening";
+  let nextCycleNumber = input.resumeState?.nextCycleNumber ?? 1;
+  let pendingOpinionRound = input.resumeState?.pendingOpinionRound ?? null;
+  let persistedModeratorSummary = input.resumeState?.moderatorSummary ?? null;
+  let persistedDecision = input.resumeState?.persistedDecision ?? null;
 
-  for (let cycleNumber = 1; cycleNumber <= input.session.debateIntensity; cycleNumber += 1) {
+  const executeOpeningCycle = async (cycleNumber: number): Promise<OrchestratedRound | null> => {
     await refreshDebateState({
       session: input.session,
       provider: input.provider,
@@ -668,87 +860,92 @@ export async function runPillowCouncilSession(input: {
         }
       : null;
 
-    if (openingRoute.shouldContinue && openingRoute.agent) {
-      roundNumber += 1;
-      rounds.push(opinionRound!);
-      await input.callbacks?.onRoundCreated?.(opinionRound!);
-      await input.callbacks?.onStreamEvent?.({
-        type: "status",
-        sessionId: input.session.id,
-        runId: input.runId,
-        status: "round-started",
-        stage: opinionRound!.stage,
-        roundId: opinionRound!.id,
-        title: opinionRound!.title,
-        createdAt: opinionRound!.createdAt
-      });
-      const agent = openingRoute.agent;
-      const retrievedMemories = await loadRetrievedMemories({
-        session: input.session,
-        runId: input.runId,
-        agentKey: agent.key,
-        agentName: agent.name,
-        kind: "opinion",
-        state: contextState,
-        retrieveMemories: input.retrieveMemories
-      });
-      const researchPlan = await planSpeakerResearch({
-        session: input.session,
-        provider: input.provider,
-        agent,
-        stage: "opinion",
-        cycleNumber,
-        state: contextState,
-        retrievedMemories,
-        usage,
-        callbacks: input.callbacks,
-        assertActive: input.assertActive
-      });
-      const researchNotes = await runSpeakerResearch({
-        session: input.session,
-        provider: input.provider,
-        agent,
-        stage: "opinion",
-        plan: researchPlan,
-        usage,
-        callbacks: input.callbacks,
-        assertActive: input.assertActive
-      });
-      const generated = await streamMessageGeneration({
-        session: input.session,
-        round: opinionRound!,
-        runId: input.runId,
-        provider: input.provider,
-        callbacks: input.callbacks,
-        assertActive: input.assertActive,
-        agentKey: agent.key,
-        agentName: agent.name,
-        role: "agent",
-        kind: "opinion",
-        system: formatAgentSystem(agent, input.session),
-        prompt: formatOpinionPrompt({
-          session: input.session,
-          agentName: agent.name,
-          cycleNumber,
-          debateState: contextState.debateState,
-          recentMessages: contextState.recentMessages,
-          retrievedMemories,
-          researchNotes
-        })
-      });
-
-      await persistMessage({
-        round: opinionRound!,
-        state: contextState,
-        usage,
-        callbacks: input.callbacks,
-        message: generated.message,
-        usageDelta: generated.usage
-      });
-      opinionRound!.summary = openingRoute.reason;
-      await input.callbacks?.onRoundSummary?.(opinionRound!.id, openingRoute.reason);
+    if (!openingRoute.shouldContinue || !openingRoute.agent || !opinionRound) {
+      return null;
     }
 
+    roundNumber += 1;
+    rounds.push(opinionRound);
+    await input.callbacks?.onRoundCreated?.(opinionRound);
+    await input.callbacks?.onStreamEvent?.({
+      type: "status",
+      sessionId: input.session.id,
+      runId: input.runId,
+      status: "round-started",
+      stage: opinionRound.stage,
+      roundId: opinionRound.id,
+      title: opinionRound.title,
+      createdAt: opinionRound.createdAt
+    });
+    const agent = openingRoute.agent;
+    const retrievedMemories = await loadRetrievedMemories({
+      session: input.session,
+      runId: input.runId,
+      agentKey: agent.key,
+      agentName: agent.name,
+      kind: "opinion",
+      state: contextState,
+      retrieveMemories: input.retrieveMemories
+    });
+    const researchPlan = await planSpeakerResearch({
+      session: input.session,
+      provider: input.provider,
+      agent,
+      stage: "opinion",
+      cycleNumber,
+      state: contextState,
+      retrievedMemories,
+      usage,
+      callbacks: input.callbacks,
+      assertActive: input.assertActive
+    });
+    const researchNotes = await runSpeakerResearch({
+      session: input.session,
+      provider: input.provider,
+      agent,
+      stage: "opinion",
+      plan: researchPlan,
+      usage,
+      callbacks: input.callbacks,
+      assertActive: input.assertActive
+    });
+    const generated = await streamMessageGeneration({
+      session: input.session,
+      round: opinionRound,
+      runId: input.runId,
+      provider: input.provider,
+      callbacks: input.callbacks,
+      assertActive: input.assertActive,
+      agentKey: agent.key,
+      agentName: agent.name,
+      role: "agent",
+      kind: "opinion",
+      system: formatAgentSystem(agent, input.session),
+      prompt: formatOpinionPrompt({
+        session: input.session,
+        agentName: agent.name,
+        cycleNumber,
+        debateState: contextState.debateState,
+        recentMessages: contextState.recentMessages,
+        retrievedMemories,
+        researchNotes
+      })
+    });
+
+    await persistMessage({
+      round: opinionRound,
+      state: contextState,
+      usage,
+      callbacks: input.callbacks,
+      message: generated.message,
+      usageDelta: generated.usage
+    });
+    opinionRound.summary = openingRoute.reason;
+    await input.callbacks?.onRoundSummary?.(opinionRound.id, openingRoute.reason);
+    return opinionRound;
+  };
+
+  const executeRebuttalCycle = async (cycleNumber: number, opinionRound: OrchestratedRound | null): Promise<OrchestratedRound | null> => {
     await refreshDebateState({
       session: input.session,
       provider: input.provider,
@@ -789,132 +986,134 @@ export async function runPillowCouncilSession(input: {
         }
       : null;
 
-    if (rebuttalRoute.shouldContinue && rebuttalRoute.agent && opinionRound && opinionRound.messages.length > 0 && rebuttalRound) {
-      roundNumber += 1;
-      rounds.push(rebuttalRound);
-      await input.callbacks?.onRoundCreated?.(rebuttalRound);
-      await input.callbacks?.onStreamEvent?.({
-        type: "status",
-        sessionId: input.session.id,
-        runId: input.runId,
-        status: "round-started",
-        stage: rebuttalRound.stage,
-        roundId: rebuttalRound.id,
-        title: rebuttalRound.title,
-        createdAt: rebuttalRound.createdAt
-      });
-      const agent = rebuttalRoute.agent;
-      const retrievedMemories = await loadRetrievedMemories({
-        session: input.session,
-        runId: input.runId,
-        agentKey: agent.key,
-        agentName: agent.name,
-        kind: "rebuttal",
-        state: contextState,
-        retrieveMemories: input.retrieveMemories
-      });
-      const researchPlan = await planSpeakerResearch({
-        session: input.session,
-        provider: input.provider,
-        agent,
-        stage: "rebuttal",
-        cycleNumber,
-        state: contextState,
-        retrievedMemories,
-        usage,
-        callbacks: input.callbacks,
-        assertActive: input.assertActive
-      });
-      const researchNotes = await runSpeakerResearch({
-        session: input.session,
-        provider: input.provider,
-        agent,
-        stage: "rebuttal",
-        plan: researchPlan,
-        usage,
-        callbacks: input.callbacks,
-        assertActive: input.assertActive
-      });
-      let rebuttalTarget = await selectRebuttalTarget({
-        session: input.session,
-        provider: input.provider,
-        agent,
-        cycleNumber,
-        opinionMessages: opinionRound.messages,
-        usage,
-        callbacks: input.callbacks,
-        assertActive: input.assertActive
-      });
-      if (rebuttalRoute.suggestedTargetAgentKey) {
-        const suggestedTarget = opinionRound.messages.find((message) => message.agentKey === rebuttalRoute.suggestedTargetAgentKey);
-        if (suggestedTarget) {
-          rebuttalTarget = {
-            targetAgentKey: suggestedTarget.agentKey,
-            targetAgentName: suggestedTarget.agentName,
-            weakestClaim: suggestedTarget.content.split("\n")[0]?.trim() || suggestedTarget.content.trim(),
-            attackPoint: rebuttalRoute.reason
-          };
-        }
-      }
-      if (rebuttalTarget.targetAgentKey === agent.key) {
-        const alternateTarget = opinionRound.messages.find((message) => message.agentKey !== agent.key);
-        if (!alternateTarget) {
-          continue;
-        }
+    if (!rebuttalRoute.shouldContinue || !rebuttalRoute.agent || !opinionRound || opinionRound.messages.length === 0 || !rebuttalRound) {
+      return null;
+    }
+
+    roundNumber += 1;
+    rounds.push(rebuttalRound);
+    await input.callbacks?.onRoundCreated?.(rebuttalRound);
+    await input.callbacks?.onStreamEvent?.({
+      type: "status",
+      sessionId: input.session.id,
+      runId: input.runId,
+      status: "round-started",
+      stage: rebuttalRound.stage,
+      roundId: rebuttalRound.id,
+      title: rebuttalRound.title,
+      createdAt: rebuttalRound.createdAt
+    });
+    const agent = rebuttalRoute.agent;
+    const retrievedMemories = await loadRetrievedMemories({
+      session: input.session,
+      runId: input.runId,
+      agentKey: agent.key,
+      agentName: agent.name,
+      kind: "rebuttal",
+      state: contextState,
+      retrieveMemories: input.retrieveMemories
+    });
+    const researchPlan = await planSpeakerResearch({
+      session: input.session,
+      provider: input.provider,
+      agent,
+      stage: "rebuttal",
+      cycleNumber,
+      state: contextState,
+      retrievedMemories,
+      usage,
+      callbacks: input.callbacks,
+      assertActive: input.assertActive
+    });
+    const researchNotes = await runSpeakerResearch({
+      session: input.session,
+      provider: input.provider,
+      agent,
+      stage: "rebuttal",
+      plan: researchPlan,
+      usage,
+      callbacks: input.callbacks,
+      assertActive: input.assertActive
+    });
+    let rebuttalTarget = await selectRebuttalTarget({
+      session: input.session,
+      provider: input.provider,
+      agent,
+      cycleNumber,
+      opinionMessages: opinionRound.messages,
+      usage,
+      callbacks: input.callbacks,
+      assertActive: input.assertActive
+    });
+    if (rebuttalRoute.suggestedTargetAgentKey) {
+      const suggestedTarget = opinionRound.messages.find((message) => message.agentKey === rebuttalRoute.suggestedTargetAgentKey);
+      if (suggestedTarget) {
         rebuttalTarget = {
-          targetAgentKey: alternateTarget.agentKey,
-          targetAgentName: alternateTarget.agentName,
-          weakestClaim: alternateTarget.content.split("\n")[0]?.trim() || alternateTarget.content.trim(),
-          attackPoint: rebuttalTarget.attackPoint
+          targetAgentKey: suggestedTarget.agentKey,
+          targetAgentName: suggestedTarget.agentName,
+          weakestClaim: suggestedTarget.content.split("\n")[0]?.trim() || suggestedTarget.content.trim(),
+          attackPoint: rebuttalRoute.reason
         };
       }
-      const generated = await streamMessageGeneration({
-        session: input.session,
-        round: rebuttalRound,
-        runId: input.runId,
-        provider: input.provider,
-        callbacks: input.callbacks,
-        assertActive: input.assertActive,
-        agentKey: agent.key,
-        agentName: agent.name,
-        role: "agent",
-        kind: "rebuttal",
-        targetAgentKey: rebuttalTarget.targetAgentKey,
-        rebuttalTarget: {
-          targetAgentKey: rebuttalTarget.targetAgentKey,
-          targetAgentName: rebuttalTarget.targetAgentName,
-          weakestClaim: rebuttalTarget.weakestClaim,
-          attackPoint: rebuttalTarget.attackPoint
-        },
-        system: formatAgentSystem(agent, input.session),
-        prompt: formatRebuttalPrompt({
-          session: input.session,
-          agentName: agent.name,
-          agentKey: agent.key,
-          cycleNumber,
-          debateState: contextState.debateState,
-          recentMessages: contextState.recentMessages,
-          retrievedMemories,
-          opinionMessages: opinionRound.messages,
-          targetAgentKey: rebuttalTarget.targetAgentKey,
-          targetAgentName: rebuttalTarget.targetAgentName,
-          weakestClaim: rebuttalTarget.weakestClaim,
-          attackPoint: rebuttalTarget.attackPoint,
-          researchNotes
-        })
-      });
-
-      await persistMessage({
-        round: rebuttalRound,
-        state: contextState,
-        usage,
-        callbacks: input.callbacks,
-        message: generated.message,
-        usageDelta: generated.usage
-      });
-      rebuttalRound.summary = rebuttalRoute.reason;
-      await input.callbacks?.onRoundSummary?.(rebuttalRound.id, rebuttalRoute.reason);
     }
+    if (rebuttalTarget.targetAgentKey === agent.key) {
+      const alternateTarget = opinionRound.messages.find((message) => message.agentKey !== agent.key);
+      if (!alternateTarget) {
+        return null;
+      }
+      rebuttalTarget = {
+        targetAgentKey: alternateTarget.agentKey,
+        targetAgentName: alternateTarget.agentName,
+        weakestClaim: alternateTarget.content.split("\n")[0]?.trim() || alternateTarget.content.trim(),
+        attackPoint: rebuttalTarget.attackPoint
+      };
+    }
+    const generated = await streamMessageGeneration({
+      session: input.session,
+      round: rebuttalRound,
+      runId: input.runId,
+      provider: input.provider,
+      callbacks: input.callbacks,
+      assertActive: input.assertActive,
+      agentKey: agent.key,
+      agentName: agent.name,
+      role: "agent",
+      kind: "rebuttal",
+      targetAgentKey: rebuttalTarget.targetAgentKey,
+      rebuttalTarget: {
+        targetAgentKey: rebuttalTarget.targetAgentKey,
+        targetAgentName: rebuttalTarget.targetAgentName,
+        weakestClaim: rebuttalTarget.weakestClaim,
+        attackPoint: rebuttalTarget.attackPoint
+      },
+      system: formatAgentSystem(agent, input.session),
+      prompt: formatRebuttalPrompt({
+        session: input.session,
+        agentName: agent.name,
+        agentKey: agent.key,
+        cycleNumber,
+        debateState: contextState.debateState,
+        recentMessages: contextState.recentMessages,
+        retrievedMemories,
+        opinionMessages: opinionRound.messages,
+        targetAgentKey: rebuttalTarget.targetAgentKey,
+        targetAgentName: rebuttalTarget.targetAgentName,
+        weakestClaim: rebuttalTarget.weakestClaim,
+        attackPoint: rebuttalTarget.attackPoint,
+        researchNotes
+      })
+    });
+
+    await persistMessage({
+      round: rebuttalRound,
+      state: contextState,
+      usage,
+      callbacks: input.callbacks,
+      message: generated.message,
+      usageDelta: generated.usage
+    });
+    rebuttalRound.summary = rebuttalRoute.reason;
+    await input.callbacks?.onRoundSummary?.(rebuttalRound.id, rebuttalRoute.reason);
 
     await refreshDebateState({
       session: input.session,
@@ -924,33 +1123,34 @@ export async function runPillowCouncilSession(input: {
       callbacks: input.callbacks,
       assertActive: input.assertActive
     });
-    if (rebuttalRound) {
-      await maybeInjectSystemIntervention({
-        session: input.session,
-        round: rebuttalRound,
-        runId: input.runId,
-        state: contextState,
-        usage,
-        callbacks: input.callbacks
-      });
-    }
-  }
+    await maybeInjectSystemIntervention({
+      session: input.session,
+      round: rebuttalRound,
+      runId: input.runId,
+      state: contextState,
+      usage,
+      callbacks: input.callbacks
+    });
 
-  await refreshDebateState({
-    session: input.session,
-    provider: input.provider,
-    state: contextState,
-    usage,
-    callbacks: input.callbacks,
-    assertActive: input.assertActive
-  });
+    return rebuttalRound;
+  };
 
-  await input.assertActive?.();
+  const executeModeratorSummary = async (): Promise<ModeratorSummary> => {
+    await refreshDebateState({
+      session: input.session,
+      provider: input.provider,
+      state: contextState,
+      usage,
+      callbacks: input.callbacks,
+      assertActive: input.assertActive
+    });
 
-  const moderatorResponse = await input.provider.generateJson({
-    provider: input.session.provider,
-    model: input.session.model,
-    variant: input.session.thinkingIntensity,
+    await input.assertActive?.();
+
+    const moderatorResponse = await input.provider.generateJson({
+      provider: input.session.provider,
+      model: input.session.model,
+      variant: input.session.thinkingIntensity,
     system: [
       "You are the PillowCouncil moderator.",
       "Summarize the strongest agreements, disagreements, and decision-relevant risks from the iterative debate.",
@@ -968,13 +1168,13 @@ export async function runPillowCouncilSession(input: {
     schema: moderatorSummarySchema
   });
 
-  await input.assertActive?.();
+    await input.assertActive?.();
 
-  usage.totalPromptTokens += moderatorResponse.usage.promptTokens;
-  usage.totalCompletionTokens += moderatorResponse.usage.completionTokens;
-  await input.callbacks?.onUsage?.(moderatorResponse.usage);
+    usage.totalPromptTokens += moderatorResponse.usage.promptTokens;
+    usage.totalCompletionTokens += moderatorResponse.usage.completionTokens;
+    await input.callbacks?.onUsage?.(moderatorResponse.usage);
 
-  const summaryRound: OrchestratedRound = {
+    const summaryRound: OrchestratedRound = {
     ...createRound(
       input.session.id,
       input.runId,
@@ -985,11 +1185,11 @@ export async function runPillowCouncilSession(input: {
     ),
     messages: []
   };
-  roundNumber += 1;
-  rounds.push(summaryRound);
-  await input.callbacks?.onRoundCreated?.(summaryRound);
-  await input.callbacks?.onStreamEvent?.({
-    type: "status",
+    roundNumber += 1;
+    rounds.push(summaryRound);
+    await input.callbacks?.onRoundCreated?.(summaryRound);
+    await input.callbacks?.onStreamEvent?.({
+      type: "status",
     sessionId: input.session.id,
     runId: input.runId,
     status: "round-started",
@@ -998,9 +1198,9 @@ export async function runPillowCouncilSession(input: {
     title: summaryRound.title,
     createdAt: summaryRound.createdAt
   });
-  await input.callbacks?.onRoundSummary?.(summaryRound.id, moderatorResponse.data.summary);
+    await input.callbacks?.onRoundSummary?.(summaryRound.id, moderatorResponse.data.summary);
 
-  const summaryMessage = createMessage({
+    const summaryMessage = createMessage({
     sessionId: input.session.id,
     runId: input.runId,
     roundId: summaryRound.id,
@@ -1023,8 +1223,8 @@ export async function runPillowCouncilSession(input: {
     ].join("\n")
   });
 
-  await persistMessage({
-    round: summaryRound,
+    await persistMessage({
+      round: summaryRound,
     state: contextState,
     usage,
     callbacks: input.callbacks,
@@ -1038,20 +1238,24 @@ export async function runPillowCouncilSession(input: {
     }
   });
 
-  await refreshDebateState({
-    session: input.session,
-    provider: input.provider,
-    state: contextState,
-    usage,
-    callbacks: input.callbacks,
-    assertActive: input.assertActive
-  });
+    return moderatorResponse.data;
+  };
 
-  await input.assertActive?.();
+  const executeFinalStage = async (moderatorSummary: ModeratorSummary): Promise<DecisionSummary> => {
+    await refreshDebateState({
+      session: input.session,
+      provider: input.provider,
+      state: contextState,
+      usage,
+      callbacks: input.callbacks,
+      assertActive: input.assertActive
+    });
 
-  const finalResponse = await input.provider.generateJson({
-    provider: input.session.provider,
-    model: input.session.model,
+    await input.assertActive?.();
+
+    const finalResponse = await input.provider.generateJson({
+      provider: input.session.provider,
+      model: input.session.model,
     variant: input.session.thinkingIntensity,
     enableWebSearch: input.session.enableWebSearch,
     system: [
@@ -1065,19 +1269,19 @@ export async function runPillowCouncilSession(input: {
       session: input.session,
       debateState: contextState.debateState,
       recentMessages: contextState.recentMessages,
-      moderatorSummary: moderatorResponse.data
+      moderatorSummary
     }),
     schema: finalDecisionSchema,
     retries: 1
   });
 
-  await input.assertActive?.();
+    await input.assertActive?.();
 
-  usage.totalPromptTokens += finalResponse.usage.promptTokens;
-  usage.totalCompletionTokens += finalResponse.usage.completionTokens;
-  await input.callbacks?.onUsage?.(finalResponse.usage);
+    usage.totalPromptTokens += finalResponse.usage.promptTokens;
+    usage.totalCompletionTokens += finalResponse.usage.completionTokens;
+    await input.callbacks?.onUsage?.(finalResponse.usage);
 
-  const finalDecision: DecisionSummary = {
+    const finalDecision: DecisionSummary = {
     topRecommendation: finalResponse.data.topRecommendation,
     alternatives: [],
     risks: finalResponse.data.risks,
@@ -1088,7 +1292,7 @@ export async function runPillowCouncilSession(input: {
     todos: []
   };
 
-  const finalRound: OrchestratedRound = {
+    const finalRound: OrchestratedRound = {
     ...createRound(
       input.session.id,
       input.runId,
@@ -1099,10 +1303,10 @@ export async function runPillowCouncilSession(input: {
     ),
     messages: []
   };
-  rounds.push(finalRound);
-  await input.callbacks?.onRoundCreated?.(finalRound);
-  await input.callbacks?.onStreamEvent?.({
-    type: "status",
+    rounds.push(finalRound);
+    await input.callbacks?.onRoundCreated?.(finalRound);
+    await input.callbacks?.onStreamEvent?.({
+      type: "status",
     sessionId: input.session.id,
     runId: input.runId,
     status: "round-started",
@@ -1111,9 +1315,9 @@ export async function runPillowCouncilSession(input: {
     title: finalRound.title,
     createdAt: finalRound.createdAt
   });
-  await input.callbacks?.onRoundSummary?.(finalRound.id, finalDecision.finalSummary);
+    await input.callbacks?.onRoundSummary?.(finalRound.id, finalDecision.finalSummary);
 
-  const finalMessage = createMessage({
+    const finalMessage = createMessage({
     sessionId: input.session.id,
     runId: input.runId,
     roundId: finalRound.id,
@@ -1130,8 +1334,8 @@ export async function runPillowCouncilSession(input: {
     ].join("\n")
   });
 
-  await persistMessage({
-    round: finalRound,
+    await persistMessage({
+      round: finalRound,
     state: contextState,
     usage,
     callbacks: input.callbacks,
@@ -1144,6 +1348,40 @@ export async function runPillowCouncilSession(input: {
       webSearches: 0
     }
   });
+
+    return finalDecision;
+  };
+
+  if (nextStage === "rebuttal" && !pendingOpinionRound) {
+    nextStage = "opening";
+  }
+
+  for (let cycleNumber = nextCycleNumber; cycleNumber <= input.session.debateIntensity; cycleNumber += 1) {
+    if (nextStage === "summary" || nextStage === "final" || nextStage === "done") {
+      break;
+    }
+
+    if (nextStage === "rebuttal") {
+      await executeRebuttalCycle(cycleNumber, pendingOpinionRound);
+      nextStage = "opening";
+      pendingOpinionRound = null;
+      continue;
+    }
+
+    const opinionRound = await executeOpeningCycle(cycleNumber);
+    await executeRebuttalCycle(cycleNumber, opinionRound);
+    nextStage = "opening";
+  }
+
+  if (nextStage === "done") {
+    throw new Error("Run is already complete");
+  }
+
+  if (nextStage === "summary" || !persistedModeratorSummary) {
+    persistedModeratorSummary = await executeModeratorSummary();
+  }
+
+  const finalDecision = persistedDecision ?? await executeFinalStage(persistedModeratorSummary);
 
   return {
     rounds,

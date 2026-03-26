@@ -48,6 +48,8 @@ export const LiveWorkspacePanel: FC<LiveWorkspacePanelProps> = ({
   onSelectMessage,
   onSelectAgent
 }) => {
+  const progressTitle = uiLocale === "ja" ? "討論の進行状況" : uiLocale === "ko" ? "토론 진행 상황" : "Debate progress";
+  const roundProgressLabel = uiLocale === "ja" ? "ラウンド" : uiLocale === "ko" ? "라운드" : "Rounds";
   const latestFeedMessage = useMemo(
     () => debateVisualization.activityFeed.find((entry) => entry.type === "message") ?? null,
     [debateVisualization]
@@ -115,9 +117,9 @@ export const LiveWorkspacePanel: FC<LiveWorkspacePanelProps> = ({
 
             <div className="mt-2.5">
               <div className="flex items-center justify-between mb-2.5">
-                <h2 className="text-sm font-bold text-white">토론 진행 상황</h2>
+                <h2 className="text-sm font-bold text-white">{progressTitle}</h2>
                 <div className="text-xs font-medium text-gray-400">
-                  라운드 <span className="text-white">{debateVisualization.summary.completedRounds}</span> /{" "}
+                  {roundProgressLabel} <span className="text-white">{debateVisualization.summary.completedRounds}</span> /{" "}
                   {debateVisualization.summary.expectedRounds}
                 </div>
               </div>

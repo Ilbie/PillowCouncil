@@ -2,7 +2,7 @@ import Image from "next/image";
 import type { ChangeEvent, FC } from "react";
 import { ChevronDown, Settings } from "lucide-react";
 
-import { Badge } from "@/components/ui/badge";
+
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { UI_LOCALE_OPTIONS, type UiLocale, getUiCopy } from "@/lib/i18n";
@@ -24,7 +24,6 @@ export const PillowCouncilHeader: FC<PillowCouncilHeaderProps> = ({ copy, uiLoca
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
             <h1 className="text-lg font-bold tracking-tight text-gray-100">PillowCouncil</h1>
-            <Badge className="border-cyan-400/20 bg-cyan-500/10 text-cyan-100">{copy.appBadge}</Badge>
           </div>
           <p className="text-xs text-cyan-50/70">{copy.headerTitle}</p>
         </div>

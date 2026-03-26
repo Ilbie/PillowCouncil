@@ -79,6 +79,32 @@ type ToolActivityPart = {
   state?: unknown;
 };
 
+function extractOpenCodeErrorMessage(error: unknown): string | null {
+  if (typeof error === "string" && error.trim()) {
+    return error.trim();
+  }
+
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+
+  if ("message" in error && typeof (error as { message?: unknown }).message === "string") {
+    return (error as { message: string }).message.trim() || null;
+  }
+
+  if ("data" in error) {
+    return extractOpenCodeErrorMessage((error as { data?: unknown }).data);
+  }
+
+  if ("error" in error) {
+    return extractOpenCodeErrorMessage((error as { error?: unknown }).error);
+  }
+
+  return null;
+}
+
+export const extractOpenCodeErrorMessageForTests = extractOpenCodeErrorMessage;
+
 function isWebSearchToolName(toolName: string): boolean {
   const normalized = toolName.trim().toLowerCase();
   return /(?:^|[_-])web[_-]?search(?:$|[_-])/.test(normalized) || normalized.includes("codesearch");
@@ -216,6 +242,18 @@ function buildWebSearchInstruction(input: { structured: boolean }): string {
 
   return guidance.join(" ");
 }
+
+function createStructuredOutputParseError(error: z.ZodError): Error {
+  const firstIssue = error.issues[0];
+  if (!firstIssue) {
+    return new Error("Structured output validation failed.");
+  }
+
+  const path = firstIssue.path.length > 0 ? firstIssue.path.join(".") : "response";
+  return new Error(`Structured output validation failed for ${path}: ${firstIssue.message}`);
+}
+
+export const createStructuredOutputParseErrorForTests = createStructuredOutputParseError;
 
 function buildToolUsageInstruction(input: {
   structured: boolean;
@@ -498,7 +536,8 @@ async function promptOpenCode<T>(input: {
     });
 
     if (result.error || !result.data) {
-      throw new Error("OpenCode failed to generate a response");
+      const message = extractOpenCodeErrorMessage(result.error);
+      throw new Error(message ? `OpenCode failed to generate a response: ${message}` : "OpenCode failed to generate a response");
     }
 
     promptCompleted = true;
@@ -520,10 +559,7 @@ async function promptOpenCode<T>(input: {
 
     if (result.data.info.error) {
       const error = result.data.info.error;
-      const message =
-        typeof error === "object" && error && "data" in error && typeof error.data === "object" && error.data && "message" in error.data
-          ? String(error.data.message)
-          : "OpenCode returned a generation error";
+      const message = extractOpenCodeErrorMessage(error) ?? "OpenCode returned a generation error";
       throw new Error(message);
     }
 
@@ -605,10 +641,13 @@ export class OpenCodePillowCouncilProvider implements PillowCouncilProvider {
       throw new Error("OpenCode did not return structured output");
     }
 
-    const data = input.schema.parse(response.structured);
+    const parsed = input.schema.safeParse(response.structured);
+    if (!parsed.success) {
+      throw createStructuredOutputParseError(parsed.error);
+    }
 
     return {
-      data,
+      data: parsed.data,
       raw: JSON.stringify(response.structured, null, 2),
       usage: response.usage
     };

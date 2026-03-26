@@ -8,7 +8,9 @@ import {
   failRun,
   getRunById,
   getSession,
+  getSessionDetail,
   RUN_STOPPED_BY_USER_MESSAGE,
+  resumeCurrentRun,
   searchRunMessageMemories,
   saveDecisionArtifacts,
   saveSessionRuntimePreset,
@@ -18,16 +20,22 @@ import {
   type SessionRunRecord
 } from "@pillow-council/shared";
 
-import { runPillowCouncilSession } from "./run-session";
+import { buildResumeStateFromDetail, runPillowCouncilSession } from "./run-session";
 import { publishRunStreamEvent, resetRunStream } from "./run-stream-bus";
 
-export async function processSessionRun(sessionId: string): Promise<SessionRunRecord> {
+export async function processSessionRun(sessionId: string, options?: { mode?: "start" | "continue" }): Promise<SessionRunRecord> {
   const session = getSession(sessionId);
   if (!session) {
     throw new Error(`Session ${sessionId} not found`);
   }
 
-  const run = startSessionRun(sessionId);
+  const mode = options?.mode ?? "start";
+  const run = mode === "continue" ? resumeCurrentRun(sessionId) : startSessionRun(sessionId);
+  const resumeDetail = mode === "continue" ? getSessionDetail(sessionId) : null;
+  const resumeState = resumeDetail ? buildResumeStateFromDetail({ detail: resumeDetail }) : undefined;
+  if (mode === "continue" && resumeState?.nextStage === "done") {
+    throw new Error("Current run has no resumable checkpoint");
+  }
   resetRunStream(sessionId);
 
   void (async () => {
@@ -37,6 +45,7 @@ export async function processSessionRun(sessionId: string): Promise<SessionRunRe
         session,
         runId: run.id,
         provider,
+        resumeState,
         assertActive() {
           assertRunIsActive(run.id);
         },

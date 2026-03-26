@@ -11,6 +11,11 @@
   reviewing product and engineering decisions, and turning messy discussions into a concrete final recommendation.
 </p>
 
+> [!WARNING]
+> This repository is in active development and is published for npm usage.
+> It may contain bugs and potential security vulnerabilities.
+> Use in production with caution.
+
 <p align="center">
   <a href="./docs/ko/README.md">한국어</a>
   ·
@@ -69,6 +74,20 @@ PillowCouncil separates connection setup from session execution:
 
 ## Quick start
 
+### Install from npm (global)
+
+PillowCouncil is published on npm.
+
+```bash
+npm i -g pillow-council
+```
+
+Then run the CLI:
+
+```bash
+pillow-council
+```
+
 ### Run from source
 
 ```bash
@@ -103,7 +122,7 @@ npm run build
 npx pillow-council
 ```
 
-If you publish the package, the same entrypoint can be used through `npx pillow-council` or `npm install -g pillow-council`.
+If you published the package, you can also run it with `npm i -g pillow-council` and then `pillow-council`.
 
 ## Connection model
 

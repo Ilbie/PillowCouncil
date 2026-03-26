@@ -2,6 +2,11 @@
 
 > English reference overview for GitHub readers and contributors.
 
+> [!WARNING]
+> This repository is in active development and is published for npm usage.
+> It may contain bugs and potential security vulnerabilities.
+> Use with caution in production.
+
 ## Summary
 
 PillowCouncil is a local, self-hosted multi-agent decision workspace. It helps you run structured debates between AI personas, surface disagreement early, and finish with a final recommendation, explicit risks, alternatives, and next actions.

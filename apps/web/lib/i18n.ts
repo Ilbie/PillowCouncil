@@ -112,6 +112,7 @@ const COPY = {
     decision: {
       title: "결정 보드",
       description: "최종 결론, TODO, export를 확인합니다.",
+      continue: "이어 하기",
       rerun: "다시 실행",
       stop: "중지",
       markdown: "Markdown",
@@ -263,6 +264,7 @@ const COPY = {
     decision: {
       title: "Decision Board",
       description: "Review the latest decision, TODO list, and exports from the selected session.",
+      continue: "Continue",
       rerun: "Rerun",
       stop: "Stop",
       markdown: "Markdown",
@@ -414,6 +416,7 @@ const COPY = {
     decision: {
       title: "決定ボード",
       description: "最終結論、TODO、エクスポートを確認します。",
+      continue: "続きから再開",
       rerun: "再実行",
       stop: "停止",
       markdown: "Markdown",
@@ -475,18 +478,6 @@ const COPY = {
 } as const;
 
 export function getPreferredUiLocale(): UiLocale {
-  if (typeof navigator === "undefined") {
-    return "ko";
-  }
-
-  const language = navigator.language.toLowerCase();
-  if (language.startsWith("ko")) {
-    return "ko";
-  }
-  if (language.startsWith("ja")) {
-    return "ja";
-  }
-
   return "en";
 }
 

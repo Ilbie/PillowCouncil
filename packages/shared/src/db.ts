@@ -112,6 +112,7 @@ function createConnection(): SqliteDatabase {
       web_searches INTEGER NOT NULL DEFAULT 0,
       total_prompt_tokens INTEGER NOT NULL DEFAULT 0,
       total_completion_tokens INTEGER NOT NULL DEFAULT 0,
+      active_work_duration_ms INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY (session_id) REFERENCES sessions(id)
@@ -342,6 +343,9 @@ function createConnection(): SqliteDatabase {
   }
   if (!runColumns.some((column) => column.name === "total_completion_tokens")) {
     db.exec(`ALTER TABLE session_runs ADD COLUMN total_completion_tokens INTEGER NOT NULL DEFAULT 0;`);
+  }
+  if (!runColumns.some((column) => column.name === "active_work_duration_ms")) {
+    db.exec(`ALTER TABLE session_runs ADD COLUMN active_work_duration_ms INTEGER NOT NULL DEFAULT 0;`);
   }
 
   db.exec(`

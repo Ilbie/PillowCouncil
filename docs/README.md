@@ -6,6 +6,11 @@
 
 PillowCouncil documentation is available in multiple languages.
 
+> [!WARNING]
+> This repository is in active development and is published for npm usage.
+> It may contain bugs and potential security vulnerabilities.
+> Use with caution in production.
+
 ## Language guides
 
 - [English](./en/README.md)

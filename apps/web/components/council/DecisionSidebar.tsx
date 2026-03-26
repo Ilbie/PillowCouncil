@@ -1,5 +1,5 @@
 import { memo, type FC } from "react";
-import { AlertTriangle, CheckCircle2, Download, FileText, Info, RefreshCcw, Sparkles, Square } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Download, FileText, Info, Play, RefreshCcw, Sparkles, Square } from "lucide-react";
 
 import type { SessionDetailResponse } from "@pillow-council/shared";
 
@@ -18,6 +18,9 @@ type DecisionSidebarProps = {
   isSubmitting: boolean;
   isStoppingRun: boolean;
   isSelectedSessionRunning: boolean;
+  canContinue: boolean;
+  isContinuingRun: boolean;
+  onContinue: () => void;
   onRerun: () => void;
   onStop: () => void;
 };
@@ -30,6 +33,9 @@ export const DecisionSidebar: FC<DecisionSidebarProps> = memo(function DecisionS
   isSubmitting,
   isStoppingRun,
   isSelectedSessionRunning,
+  canContinue,
+  isContinuingRun,
+  onContinue,
   onRerun,
   onStop
 }) {
@@ -41,6 +47,18 @@ export const DecisionSidebar: FC<DecisionSidebarProps> = memo(function DecisionS
           {copy.decision.title}
         </h2>
         <div className="flex gap-2">
+          {canContinue ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-9 gap-1.5 rounded-lg border border-cyan-500/30 bg-cyan-500/10 px-3 text-cyan-100 hover:bg-cyan-500/20"
+              onClick={onContinue}
+              disabled={!selectedId || isSubmitting || isStoppingRun || isContinuingRun || isSelectedSessionRunning}
+            >
+              <Play size={12} />
+              {copy.decision.continue}
+            </Button>
+          ) : null}
           <Button
             variant="ghost"
             size="sm"

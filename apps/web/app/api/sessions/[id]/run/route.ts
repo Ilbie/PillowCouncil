@@ -1,13 +1,20 @@
 import { processSessionRun } from "@pillow-council/orchestration";
 import { stopCurrentRun } from "@pillow-council/shared";
+import { z } from "zod";
 
 import { withErrorHandler } from "@/app/api/_utils";
 
 export const runtime = "nodejs";
 
-export const POST = withErrorHandler(async (_: Request, context: { params: Promise<{ id: string }> }) => {
+const runRequestSchema = z.object({
+  mode: z.enum(["start", "continue"]).default("start")
+});
+
+export const POST = withErrorHandler(async (request: Request, context: { params: Promise<{ id: string }> }) => {
   const { id } = await context.params;
-  const run = await processSessionRun(id);
+  const rawBody = await request.text();
+  const payload = runRequestSchema.parse(rawBody ? JSON.parse(rawBody) : {});
+  const run = await processSessionRun(id, { mode: payload.mode });
   return Response.json({ runId: run.id, run });
 }, {
   fallbackMessage: "Failed to run session",

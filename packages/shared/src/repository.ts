@@ -159,9 +159,25 @@ function mapRun(row: typeof sessionRuns.$inferSelect | undefined): SessionRunRec
     webSearches: row.webSearches,
     totalPromptTokens: row.totalPromptTokens,
     totalCompletionTokens: row.totalCompletionTokens,
+    activeWorkDurationMs: row.activeWorkDurationMs,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt
   };
+}
+
+export function calculateElapsedDurationMsForTests(startedAt: string | null, endedAt: string | null): number {
+  const startedAtMs = startedAt ? Date.parse(startedAt) : Number.NaN;
+  const endedAtMs = endedAt ? Date.parse(endedAt) : Number.NaN;
+
+  if (!Number.isFinite(startedAtMs) || !Number.isFinite(endedAtMs)) {
+    return 0;
+  }
+
+  return Math.max(0, endedAtMs - startedAtMs);
+}
+
+function calculateElapsedDurationMs(startedAt: string | null, endedAt: string | null): number {
+  return calculateElapsedDurationMsForTests(startedAt, endedAt);
 }
 
 function parseDebateState(value: string | null | undefined): DebateState {
@@ -443,6 +459,7 @@ export function startSessionRun(sessionId: string): SessionRunRecord {
     webSearches: 0,
     totalPromptTokens: 0,
     totalCompletionTokens: 0,
+    activeWorkDurationMs: 0,
     createdAt: now,
     updatedAt: now
   };
@@ -469,10 +486,11 @@ export function startSessionRun(sessionId: string): SessionRunRecord {
     debateState: run.debateState ?? JSON.stringify(createEmptyDebateState()),
     mcpCalls: run.mcpCalls ?? 0,
     skillUses: run.skillUses ?? 0,
-    webSearches: run.webSearches ?? 0,
-    totalPromptTokens: run.totalPromptTokens ?? 0,
-    totalCompletionTokens: run.totalCompletionTokens ?? 0
-  })!;
+      webSearches: run.webSearches ?? 0,
+      totalPromptTokens: run.totalPromptTokens ?? 0,
+      totalCompletionTokens: run.totalCompletionTokens ?? 0,
+      activeWorkDurationMs: run.activeWorkDurationMs ?? 0
+    })!;
 }
 
 export function queueSessionRun(sessionId: string): SessionRunRecord {
@@ -699,6 +717,8 @@ export function completeRun(runId: string, artifacts: RunArtifacts): void {
     throw new Error("Session not found");
   }
 
+  const activeWorkDurationMs = run.activeWorkDurationMs + calculateElapsedDurationMs(run.startedAt, now);
+
   const save = sqlite.transaction(() => {
     for (const round of artifacts.rounds) {
       sqlite
@@ -765,18 +785,21 @@ export function completeRun(runId: string, artifacts: RunArtifacts): void {
       .prepare(
         `UPDATE session_runs
          SET status = 'completed',
+             started_at = NULL,
              completed_at = ?,
              updated_at = ?,
              total_prompt_tokens = ?,
              total_completion_tokens = ?,
-             error_message = NULL
-         WHERE id = ?`
+             error_message = NULL,
+             active_work_duration_ms = ?
+          WHERE id = ?`
       )
       .run(
         now,
         now,
         artifacts.usage.totalPromptTokens,
         artifacts.usage.totalCompletionTokens,
+        activeWorkDurationMs,
         runId
       );
 
@@ -1021,16 +1044,20 @@ export function completeRunRecord(runId: string): void {
     throw new Error("Run not found");
   }
 
+  const activeWorkDurationMs = run.activeWorkDurationMs + calculateElapsedDurationMs(run.startedAt, now);
+
   sqlite
     .prepare(
       `UPDATE session_runs
        SET status = 'completed',
-           completed_at = ?,
-           updated_at = ?,
-           error_message = NULL
-       WHERE id = ?`
+            started_at = NULL,
+            completed_at = ?,
+            updated_at = ?,
+            error_message = NULL,
+            active_work_duration_ms = ?
+        WHERE id = ?`
     )
-    .run(now, now, runId);
+    .run(now, now, activeWorkDurationMs, runId);
 
   sqlite
     .prepare(`UPDATE sessions SET status = 'completed', updated_at = ? WHERE id = ? AND current_run_id = ?`)
@@ -1046,17 +1073,21 @@ export function failRun(runId: string, errorMessage: string): void {
     return;
   }
 
+  const activeWorkDurationMs = run.activeWorkDurationMs + calculateElapsedDurationMs(run.startedAt, now);
+
   const markFailed = sqlite.transaction(() => {
     sqlite
       .prepare(
         `UPDATE session_runs
          SET status = 'failed',
+             started_at = NULL,
              completed_at = ?,
              updated_at = ?,
-             error_message = ?
+             error_message = ?,
+             active_work_duration_ms = ?
          WHERE id = ?`
       )
-      .run(now, now, errorMessage, runId);
+      .run(now, now, errorMessage, activeWorkDurationMs, runId);
 
     sqlite
       .prepare(`UPDATE sessions SET status = 'failed', updated_at = ? WHERE id = ? AND current_run_id = ?`)
@@ -1064,6 +1095,73 @@ export function failRun(runId: string, errorMessage: string): void {
   });
 
   markFailed();
+}
+
+function pruneIncompleteRunRounds(runId: string): void {
+  const sqlite = getSQLite();
+
+  sqlite
+    .prepare(
+      `DELETE FROM rounds
+       WHERE run_id = ?
+         AND id NOT IN (
+           SELECT DISTINCT round_id
+           FROM messages
+           WHERE run_id = ?
+             AND round_id IS NOT NULL
+         )`
+    )
+    .run(runId, runId);
+}
+
+export function resumeCurrentRun(sessionId: string): SessionRunRecord {
+  const run = getCurrentRun(sessionId);
+  if (!run) {
+    throw new Error("No failed run to continue");
+  }
+
+  if (run.status === "running" || run.status === "queued") {
+    throw new Error("A run is already in progress");
+  }
+
+  const detail = getSessionDetail(sessionId);
+  if (detail?.decision) {
+    throw new Error("Current run already has a final decision");
+  }
+
+  const sqlite = getSQLite();
+  const now = nowIso();
+  const activeWorkDurationMs = run.activeWorkDurationMs + calculateElapsedDurationMs(run.startedAt, run.completedAt);
+
+  const reopen = sqlite.transaction(() => {
+    pruneIncompleteRunRounds(run.id);
+
+    sqlite
+      .prepare(
+        `UPDATE session_runs
+         SET status = 'running',
+             started_at = ?,
+             completed_at = NULL,
+             updated_at = ?,
+             error_message = NULL,
+             active_work_duration_ms = ?
+         WHERE id = ?`
+      )
+      .run(now, now, activeWorkDurationMs, run.id);
+
+    sqlite
+      .prepare(`UPDATE sessions SET status = 'running', updated_at = ? WHERE id = ? AND current_run_id = ?`)
+      .run(now, sessionId, run.id);
+  });
+
+  reopen();
+
+  const resumed = getRunById(run.id);
+  if (!resumed) {
+    throw new Error("Run not found");
+  }
+
+  return resumed;
 }
 
 export function seedCompletedRun(

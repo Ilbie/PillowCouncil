@@ -79,6 +79,90 @@ export type SkillsSettingsState = {
   available: AvailableSkill[];
 };
 
+export type DefaultInstallableSkill = {
+  id: string;
+  name: string;
+  description: string;
+  sourceUrl: string;
+  sourceLabel: string;
+};
+
+export type DefaultInstallableMcp = {
+  id: string;
+  name: string;
+  description: string;
+  command: string[];
+  sourceUrl: string;
+  sourceLabel: string;
+};
+
+export type DefaultInstallCatalog = {
+  skills: DefaultInstallableSkill[];
+  mcpServers: DefaultInstallableMcp[];
+};
+
+const DEFAULT_INSTALL_CATALOG: DefaultInstallCatalog = {
+  skills: [
+    {
+      id: "deep-research-core",
+      name: "research",
+      description: "Core deep-research outline workflow from Weizhena's Deep-Research-skills repository.",
+      sourceUrl: "https://raw.githubusercontent.com/Weizhena/Deep-Research-skills/master/skills/research-en/research/SKILL.md",
+      sourceLabel: "Weizhena/Deep-Research-skills"
+    },
+    {
+      id: "deep-research-deep",
+      name: "research-deep",
+      description: "Parallel deep investigation workflow from Weizhena's Deep-Research-skills repository.",
+      sourceUrl: "https://raw.githubusercontent.com/Weizhena/Deep-Research-skills/master/skills/research-en/research-deep/SKILL.md",
+      sourceLabel: "Weizhena/Deep-Research-skills"
+    },
+    {
+      id: "pm-deliver-prd",
+      name: "deliver-prd",
+      description: "Production-ready PRD workflow from product-on-purpose/pm-skills.",
+      sourceUrl: "https://raw.githubusercontent.com/product-on-purpose/pm-skills/main/skills/deliver-prd/SKILL.md",
+      sourceLabel: "product-on-purpose/pm-skills"
+    },
+    {
+      id: "context-fundamentals",
+      name: "context-fundamentals",
+      description: "Foundational context engineering skill from Agent-Skills-for-Context-Engineering.",
+      sourceUrl: "https://raw.githubusercontent.com/muratcankoylan/Agent-Skills-for-Context-Engineering/main/skills/context-fundamentals/SKILL.md",
+      sourceLabel: "muratcankoylan/Agent-Skills-for-Context-Engineering"
+    },
+    {
+      id: "project-development",
+      name: "project-development",
+      description: "LLM product-development planning skill from Agent-Skills-for-Context-Engineering.",
+      sourceUrl: "https://raw.githubusercontent.com/muratcankoylan/Agent-Skills-for-Context-Engineering/main/skills/project-development/SKILL.md",
+      sourceLabel: "muratcankoylan/Agent-Skills-for-Context-Engineering"
+    }
+  ],
+  mcpServers: [
+    {
+      id: "sequential-thinking",
+      name: "sequential-thinking",
+      description: "Official MCP sequential thinking server for stepwise analysis.",
+      command: ["npx", "-y", "@modelcontextprotocol/server-sequential-thinking"],
+      sourceUrl: "https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking",
+      sourceLabel: "modelcontextprotocol/servers"
+    },
+    {
+      id: "pm-skills-mcp",
+      name: "pm-skills",
+      description: "Product-on-Purpose PM skills MCP server for instant PM workflow access.",
+      command: ["npx", "-y", "pm-skills-mcp"],
+      sourceUrl: "https://github.com/product-on-purpose/pm-skills",
+      sourceLabel: "product-on-purpose/pm-skills"
+    }
+  ]
+};
+
+export function getDefaultInstallCatalog(): DefaultInstallCatalog {
+  return DEFAULT_INSTALL_CATALOG;
+}
+
 function getEnabledSkillsDir(): string {
   return path.join(getPillowCouncilHomeDir(), "skills");
 }
@@ -203,6 +287,20 @@ async function syncManagedSkills(skills: z.infer<typeof managedSkillSchema>[]): 
   );
 }
 
+async function fetchDefaultSkillContent(sourceUrl: string): Promise<{ description: string; content: string }> {
+  const response = await fetch(sourceUrl);
+  if (!response.ok) {
+    throw new Error(`Failed to download default skill from ${sourceUrl}`);
+  }
+
+  const text = await response.text();
+  const parsed = parseSkillDocument(text);
+  return {
+    description: parsed.description || "Imported skill",
+    content: parsed.content
+  };
+}
+
 function toMcpConfigMap(servers: z.infer<typeof mcpServerDraftSchema>[]): Record<string, McpLocalConfig | McpRemoteConfig> {
   return Object.fromEntries(
     servers.map((server) => {
@@ -325,4 +423,60 @@ export async function saveSkillsSettingsState(input: SkillsSettingsPayload): Pro
   withRuntimeFlagPatch({ enableMcp: getAppSettings().enableMcp, enableSkills: payload.enabled });
   await disposeOpencodeHandle();
   return getSkillsSettingsState();
+}
+
+export async function installDefaultSkill(skillId: string): Promise<SkillsSettingsState> {
+  const preset = DEFAULT_INSTALL_CATALOG.skills.find((item) => item.id === skillId);
+  if (!preset) {
+    throw new Error("Unknown default skill");
+  }
+
+  const current = await getSkillsSettingsState();
+  if (current.managed.some((skill) => skill.name === preset.name)) {
+    return current;
+  }
+
+  const fetched = await fetchDefaultSkillContent(preset.sourceUrl);
+  return saveSkillsSettingsState({
+    enabled: current.enabled,
+    managed: [
+      ...current.managed.map((skill) => ({
+        name: skill.name,
+        description: skill.description,
+        content: skill.content,
+        enabled: skill.enabled
+      })),
+      {
+        name: preset.name,
+        description: fetched.description || preset.description,
+        content: fetched.content,
+        enabled: true
+      }
+    ]
+  });
+}
+
+export async function installDefaultMcpServer(serverId: string): Promise<McpSettingsState> {
+  const preset = DEFAULT_INSTALL_CATALOG.mcpServers.find((item) => item.id === serverId);
+  if (!preset) {
+    throw new Error("Unknown default MCP server");
+  }
+
+  const current = await getMcpSettingsState();
+  if (current.servers.some((server) => server.name === preset.name)) {
+    return current;
+  }
+
+  return saveMcpSettingsState({
+    enabled: current.enabled,
+    servers: [
+      ...current.servers,
+      {
+        name: preset.name,
+        enabled: true,
+        type: "local",
+        command: preset.command
+      }
+    ]
+  });
 }

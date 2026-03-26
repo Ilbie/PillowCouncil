@@ -1,6 +1,8 @@
 import type { AgentDefinition, DebateState, MemorySearchResult, MessageRecord, ModeratorSummary, PresetDefinition, SessionLanguage, SessionRecord } from "@pillow-council/shared";
 import { parseRebuttalTargetHeader } from "@pillow-council/shared";
 
+export const STRUCTURED_REASON_MAX_CHARS = 600;
+
 export function getLanguageInstruction(session: SessionRecord): string {
   const labels: Record<SessionLanguage, string> = {
     ko: "Korean",
@@ -324,6 +326,7 @@ export function formatSpeakerRoutingPrompt(input: {
     "Choose the speaker who can most improve the debate by adding new information, answering a direct challenge, or refocusing the topic.",
     "Avoid repetitive ping-pong and avoid picking the last speaker again unless the rebuttal stage clearly requires it.",
     "If no speaker would materially improve the debate, stop this stage.",
+    `Keep the reason concise and under ${STRUCTURED_REASON_MAX_CHARS} characters.`,
     "Return JSON matching this shape exactly:",
     '{"shouldContinue":true,"nextSpeakerKey":"","reason":"","suggestedTargetAgentKey":null}',
     getLanguageInstruction(input.session)
@@ -359,6 +362,7 @@ export function formatResearchPlanPrompt(input: {
     "When web search is enabled, prefer one bounded search over guessing whenever the turn depends on current facts, market reality, or external examples.",
     "If web search is enabled and the turn could benefit from current external facts, default to one bounded search instead of skipping research.",
     "Keep research tightly bounded.",
+    `Keep the reason concise and under ${STRUCTURED_REASON_MAX_CHARS} characters.`,
     "Return JSON matching this shape exactly:",
     '{"shouldResearch":false,"focus":"","query":"","reason":""}',
     getLanguageInstruction(input.session)
@@ -370,8 +374,14 @@ export function getLocalizedInterventionMessage(input: {
   warning: string;
   topic: string;
 }): string {
-  void input.language;
-  return `[System] Warning: ${input.warning} Return immediately to the original topic, "${input.topic}".`;
+  switch (input.language) {
+    case "ko":
+      return `[시스템] 경고: ${input.warning} 즉시 원래 주제인 "${input.topic}"로 돌아오세요.`;
+    case "ja":
+      return `[システム] 警告: ${input.warning} 直ちに元のトピック「${input.topic}」に戻ってください。`;
+    default:
+      return `[System] Warning: ${input.warning} Return immediately to the original topic, "${input.topic}".`;
+  }
 }
 
 export function formatFinalPrompt(input: {
@@ -380,6 +390,28 @@ export function formatFinalPrompt(input: {
   recentMessages: MessageRecord[];
   moderatorSummary: ModeratorSummary;
 }): string {
+  const finalLabels: Record<SessionLanguage, { moderatorSummary: string; recentDiscussion: string; whiteboard: string; noContext: string }> = {
+    ko: {
+      moderatorSummary: "# 모더레이터 요약",
+      recentDiscussion: "최근 토론",
+      whiteboard: "현재 토론 화이트보드:",
+      noContext: "사용 가능한 토론 컨텍스트가 없습니다."
+    },
+    en: {
+      moderatorSummary: "# Moderator summary",
+      recentDiscussion: "Recent discussion",
+      whiteboard: "Current debate whiteboard:",
+      noContext: "No debate context available."
+    },
+    ja: {
+      moderatorSummary: "# モデレーター要約",
+      recentDiscussion: "最近の討論",
+      whiteboard: "現在の討論ホワイトボード:",
+      noContext: "利用可能な討論コンテキストはありません。"
+    }
+  };
+  const labels = finalLabels[input.session.language] ?? finalLabels.en;
+
   return [
     `Topic: ${input.session.prompt}`,
     `Preset: ${input.session.customPreset?.name ?? input.session.presetId}`,
@@ -387,12 +419,12 @@ export function formatFinalPrompt(input: {
     `Completed debate cycles: ${input.session.debateIntensity}`,
     `Thinking intensity: ${getThinkingIntensityLabel(input.session)}`,
     "",
-    "Current debate whiteboard:",
+    labels.whiteboard,
     renderDebateState(input.debateState),
     "",
-    input.recentMessages.length > 0 ? `Recent discussion:\n${renderMessages(input.recentMessages)}` : "No debate context available.",
+    input.recentMessages.length > 0 ? `${labels.recentDiscussion}:\n${renderMessages(input.recentMessages)}` : labels.noContext,
     "",
-    "# Moderator summary",
+    labels.moderatorSummary,
     JSON.stringify(input.moderatorSummary, null, 2),
     "",
     "Synthesize the debate into a final decision.",

@@ -2,6 +2,27 @@
   "name": "pillow-council",
   "version": "0.1.0",
   "private": false,
+  "description": "CLI for running PillowCouncil's multi-agent decision board locally.",
+  "license": "MIT",
+  "homepage": "https://github.com/ilbie/PillowCouncil#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ilbie/PillowCouncil.git"
+  },
+  "bugs": {
+    "url": "https://github.com/ilbie/PillowCouncil/issues"
+  },
+  "keywords": [
+    "cli",
+    "ai",
+    "agents",
+    "debate",
+    "opencode",
+    "nextjs"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "pillow-council": "bin/cli.js"
   },

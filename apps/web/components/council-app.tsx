@@ -107,6 +107,7 @@ import {
 } from "@/lib/council-app-labels";
 import { getAgentVisual } from "@/lib/council-agent-visuals";
 import type {
+  DefaultInstallCatalogDraft,
   GeneratedPresetResponse,
   GeneratedPresetInputs,
   LiveMessageMap,
@@ -168,6 +169,7 @@ export function PillowCouncilApp({
   const [isSavingMcpSettings, setIsSavingMcpSettings] = useState(false);
   const [isSavingSkillsSettings, setIsSavingSkillsSettings] = useState(false);
   const [isStoppingRun, setIsStoppingRun] = useState(false);
+  const [isContinuingRun, setIsContinuingRun] = useState(false);
   const [isLoadingMoreSessions, setIsLoadingMoreSessions] = useState(false);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   const [savedSettings, setSavedSettings] = useState<AppSettings>(initialSettings);
@@ -180,6 +182,8 @@ export function PillowCouncilApp({
     managed: [],
     available: []
   });
+  const [defaultInstallCatalog, setDefaultInstallCatalog] = useState<DefaultInstallCatalogDraft>({ skills: [], mcpServers: [] });
+  const [installingDefaultId, setInstallingDefaultId] = useState<string | null>(null);
   const [savedConnectionState, setSavedConnectionState] = useState<ProviderConnectionState>(initialConnection);
   const [draftConnectionState, setDraftConnectionState] = useState<ProviderConnectionState>(initialConnection);
   const [activeRunSessionId, setActiveRunSessionId] = useState<string | null>(
@@ -200,6 +204,12 @@ export function PillowCouncilApp({
   const [generatedPreset, setGeneratedPreset] = useState<PresetDefinition | null>(null);
   const [generatedPresetSource, setGeneratedPresetSource] = useState<GeneratedPresetInputs | null>(null);
   const [shouldReturnToSession, setShouldReturnToSession] = useState(false);
+  const resizeHandleTitle = uiLocale === "ja" ? "ドラッグして幅を調整" : uiLocale === "ko" ? "드래그하여 너비 조절" : "Drag to resize";
+  const reasoningLabel = uiLocale === "ja" ? "思考過程" : uiLocale === "ko" ? "생각 과정" : "Reasoning Process";
+  const liveLabel = uiLocale === "ja" ? "ライブ" : uiLocale === "ko" ? "실시간" : "Live";
+  const messageCountLabel = (count: number) => uiLocale === "ja" ? `${count}件のメッセージ` : uiLocale === "ko" ? `${count}개 메시지` : `${count} messages`;
+  const noMessagesLabel = uiLocale === "ja" ? "まだ登録されたメッセージはありません。" : uiLocale === "ko" ? "아직 등록된 메시지가 없습니다." : "No messages have been recorded yet.";
+  const roundNumberLabel = (roundNumber: number) => uiLocale === "ja" ? `ラウンド ${roundNumber}` : uiLocale === "ko" ? `라운드 ${roundNumber}` : `Round ${roundNumber}`;
 
   // Resizable sidebar state
   const SIDEBAR_MIN = 180;
@@ -490,13 +500,14 @@ export function PillowCouncilApp({
     }
   };
 
-  const launchRun = (sessionId: string) => {
+  const launchRun = (sessionId: string, mode: "start" | "continue" = "start") => {
     setActiveRunSessionId(sessionId);
     setActiveStreamRunId(null);
     setLiveMessages((current) => removeLiveMessagesForSession(current, sessionId));
 
     void readJson<RunRouteResponse>(`/api/sessions/${sessionId}/run`, {
-      method: "POST"
+      method: "POST",
+      body: JSON.stringify({ mode })
     })
       .then(async (runResponse) => {
         await syncSessionState(sessionId, { source: "manual" });
@@ -859,12 +870,18 @@ export function PillowCouncilApp({
     return response;
   };
 
+  const loadDefaultInstallCatalog = async () => {
+    const response = await readJson<DefaultInstallCatalogDraft>("/api/settings/defaults");
+    setDefaultInstallCatalog(response);
+    return response;
+  };
+
   useEffect(() => {
     if (!isSettingsOpen) {
       return;
     }
 
-    void Promise.all([loadMcpSettings(), loadSkillsSettings()]).catch((requestError) => {
+    void Promise.all([loadMcpSettings(), loadSkillsSettings(), loadDefaultInstallCatalog()]).catch((requestError) => {
       setError(requestError instanceof Error ? requestError.message : copy.errorFallback);
     });
   }, [isSettingsOpen]);
@@ -910,6 +927,40 @@ export function PillowCouncilApp({
       setError(requestError instanceof Error ? requestError.message : copy.errorFallback);
     } finally {
       setIsSavingSkillsSettings(false);
+    }
+  };
+
+  const handleInstallDefaultSkill = async (id: string) => {
+    setError(null);
+    setInstallingDefaultId(id);
+
+    try {
+      const response = await readJson<{ skills: SkillsSettingsDraft }>("/api/settings/defaults", {
+        method: "POST",
+        body: JSON.stringify({ kind: "skill", id })
+      });
+      setSkillsSettings(response.skills);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : copy.errorFallback);
+    } finally {
+      setInstallingDefaultId(null);
+    }
+  };
+
+  const handleInstallDefaultMcp = async (id: string) => {
+    setError(null);
+    setInstallingDefaultId(id);
+
+    try {
+      const response = await readJson<{ mcp: McpSettingsDraft }>("/api/settings/defaults", {
+        method: "POST",
+        body: JSON.stringify({ kind: "mcp", id })
+      });
+      setMcpSettings(response.mcp);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : copy.errorFallback);
+    } finally {
+      setInstallingDefaultId(null);
     }
   };
 
@@ -1144,7 +1195,7 @@ export function PillowCouncilApp({
 
       setIsCreateSessionOpen(false);
       setSelectedId(created.sessionId);
-      launchRun(created.sessionId);
+        launchRun(created.sessionId, "start");
       await refreshSessions().catch(() => undefined);
       await refreshDetail(created.sessionId).catch(() => undefined);
       setForm((current) => ({
@@ -1171,13 +1222,36 @@ export function PillowCouncilApp({
     setIsSubmitting(true);
 
     try {
-      launchRun(selectedId);
+      launchRun(selectedId, "start");
       await refreshSessions().catch(() => undefined);
       await refreshDetail(selectedId).catch(() => undefined);
     } finally {
       setIsSubmitting(false);
     }
   }, [refreshDetail, refreshSessions, selectedId]);
+
+  const canContinueSelectedSession = Boolean(
+    selectedId &&
+    detail?.run?.status === "failed" &&
+    !detail?.decision &&
+    !isSelectedSessionRunning
+  );
+
+  const handleContinue = useCallback(async () => {
+    if (!selectedId || !canContinueSelectedSession) {
+      return;
+    }
+
+    setError(null);
+    setIsContinuingRun(true);
+    try {
+      launchRun(selectedId, "continue");
+      await refreshSessions().catch(() => undefined);
+      await refreshDetail(selectedId).catch(() => undefined);
+    } finally {
+      setIsContinuingRun(false);
+    }
+  }, [canContinueSelectedSession, refreshDetail, refreshSessions, selectedId]);
 
   const handleStop = useCallback(async () => {
     if (!selectedId || !isSelectedSessionRunning) {
@@ -1382,7 +1456,7 @@ ${target.session.title}`);
           <div
             onMouseDown={(e) => startResize(e, "left")}
             className="group relative z-20 flex w-1 shrink-0 cursor-col-resize items-center justify-center bg-gray-800 hover:bg-blue-500/50 transition-colors"
-            title="드래그하여 너비 조절"
+            title={resizeHandleTitle}
           >
             <div className="h-8 w-0.5 rounded-full bg-gray-600 group-hover:bg-blue-400 transition-colors" />
           </div>
@@ -1466,7 +1540,7 @@ ${target.session.title}`);
           <div
             onMouseDown={(e) => startResize(e, "right")}
             className="group relative z-20 flex w-1 shrink-0 cursor-col-resize items-center justify-center bg-gray-800 hover:bg-blue-500/50 transition-colors"
-            title="드래그하여 너비 조절"
+            title={resizeHandleTitle}
           >
             <div className="h-8 w-0.5 rounded-full bg-gray-600 group-hover:bg-blue-400 transition-colors" />
           </div>
@@ -1484,6 +1558,9 @@ ${target.session.title}`);
               isSubmitting={isSubmitting}
               isStoppingRun={isStoppingRun}
               isSelectedSessionRunning={isSelectedSessionRunning}
+              canContinue={canContinueSelectedSession}
+              isContinuingRun={isContinuingRun}
+              onContinue={handleContinue}
               onRerun={handleRerun}
               onStop={handleStop}
             />
@@ -1516,6 +1593,8 @@ ${target.session.title}`);
         savedSettings={savedSettings}
         mcpSettings={mcpSettings}
         skillsSettings={skillsSettings}
+        defaultInstallCatalog={defaultInstallCatalog}
+        installingDefaultId={installingDefaultId}
         savedConnectionState={savedConnectionState}
         sessionProvider={sessionProvider}
         sessionModelOptions={sessionModelOptions}
@@ -1555,6 +1634,8 @@ ${target.session.title}`);
         onSaveMcpSettings={handleSaveMcpSettings}
         onSkillsSettingsChange={setSkillsSettings}
         onSaveSkillsSettings={handleSaveSkillsSettings}
+        onInstallDefaultMcp={handleInstallDefaultMcp}
+        onInstallDefaultSkill={handleInstallDefaultSkill}
         onFormChange={(patch) => setForm((current) => ({ ...current, ...patch }))}
         onGeneratedPresetPromptChange={setGeneratedPresetPrompt}
         onGeneratedPresetAgentCountChange={setGeneratedPresetAgentCount}
@@ -1619,7 +1700,7 @@ ${target.session.title}`);
                   "border-gray-700 bg-gray-800 text-gray-300",
                   detailedMessageInfo.message.isStreaming && "border-blue-400/20 bg-blue-500/10 text-blue-200"
                 )}>
-                  {detailedMessageInfo.message.isStreaming ? `${getMessageKindLabel(detailedMessageInfo.message.kind, uiLocale)} · Live` : getMessageKindLabel(detailedMessageInfo.message.kind, uiLocale)}
+                  {detailedMessageInfo.message.isStreaming ? `${getMessageKindLabel(detailedMessageInfo.message.kind, uiLocale)} · ${liveLabel}` : getMessageKindLabel(detailedMessageInfo.message.kind, uiLocale)}
                 </Badge>
               </div>
 
@@ -1627,7 +1708,7 @@ ${target.session.title}`);
                 <div className="mb-6 rounded-2xl border border-blue-500/15 bg-blue-500/5 px-5 py-4">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-300/80 mb-3 flex items-center gap-2">
                     <Lightbulb size={14} className="text-blue-400" />
-                    생각 과정 (Reasoning Process)
+                    {reasoningLabel}
                   </p>
                   <MarkdownContent
                     content={detailedMessageInfo.message.reasoning}
@@ -1662,7 +1743,7 @@ ${target.session.title}`);
                   </div>
                 </div>
                 <Badge className="border-gray-700 bg-gray-900 text-gray-300 ml-4">
-                  {selectedAgentMessages.length}개 메시지
+                  {messageCountLabel(selectedAgentMessages.length)}
                 </Badge>
               </div>
               <button aria-label={getCloseLabel(uiLocale)} className="text-gray-400 hover:text-white shrink-0" onClick={() => setSelectedAgentKey(null)}>
@@ -1673,20 +1754,20 @@ ${target.session.title}`);
             <div className="council-scrollbar flex-1 overflow-y-auto p-6 bg-[#060913] space-y-6">
               {selectedAgentMessages.length === 0 ? (
                 <div className="flex min-h-[300px] flex-col items-center justify-center rounded-[20px] border border-dashed border-gray-800 bg-gray-900/30 p-8 text-center">
-                  <p className="text-gray-500">아직 등록된 메시지가 없습니다.</p>
+                  <p className="text-gray-500">{noMessagesLabel}</p>
                 </div>
               ) : selectedAgentMessages.map((m, idx) => (
                 <div key={m.message.id} className="rounded-[20px] border border-gray-800 bg-gray-900/60 p-5 relative">
                   <div className="absolute top-5 right-5 text-[10px] font-semibold text-gray-600">#{idx + 1}</div>
                   <div className="mb-4 flex flex-wrap items-center gap-2">
                     <Badge className="border-gray-700 bg-gray-800 text-gray-300">
-                      라운드 {m.round.roundNumber}
+                      {roundNumberLabel(m.round.roundNumber)}
                     </Badge>
                     <Badge className="border-gray-700 bg-gray-800 text-gray-300">
                       {getRoundStageLabel(m.round.stage, uiLocale)}
                     </Badge>
                     <Badge className={cn("border-gray-700 bg-gray-800 text-gray-300", m.message.isStreaming && "border-blue-400/20 bg-blue-500/10 text-blue-200")}>
-                      {m.message.isStreaming ? `${getMessageKindLabel(m.message.kind, uiLocale)} · Live` : getMessageKindLabel(m.message.kind, uiLocale)}
+                      {m.message.isStreaming ? `${getMessageKindLabel(m.message.kind, uiLocale)} · ${liveLabel}` : getMessageKindLabel(m.message.kind, uiLocale)}
                     </Badge>
                   </div>
 
@@ -1694,7 +1775,7 @@ ${target.session.title}`);
                     <div className="mb-5 rounded-xl border border-blue-500/15 bg-blue-500/5 px-4 py-3">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-blue-300/80 mb-2 flex items-center gap-2">
                         <Lightbulb size={12} className="text-blue-400" />
-                        생각 과정
+                        {reasoningLabel}
                       </p>
                       <MarkdownContent
                         content={m.message.reasoning}
