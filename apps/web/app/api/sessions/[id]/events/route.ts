@@ -17,10 +17,11 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
 
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
-      const unsubscribe = subscribeToRunStream(id, (event) => {
+      let unsubscribe: (() => void) | undefined;
+      unsubscribe = subscribeToRunStream(id, (event) => {
         controller.enqueue(encodeSseFrame(event.type, event));
         if (event.type === "run-complete" || event.type === "run-error") {
-          unsubscribe();
+          unsubscribe?.();
           controller.close();
         }
       });

@@ -32,8 +32,12 @@ export function subscribeToRunStream(sessionId: string, listener: StreamListener
   listenersBySession.set(sessionId, listeners);
 
   const history = historyBySession.get(sessionId) ?? [];
-  for (const event of history) {
-    listener(event);
+  if (history.length > 0) {
+    queueMicrotask(() => {
+      for (const event of history) {
+        listener(event);
+      }
+    });
   }
 
   return () => {
